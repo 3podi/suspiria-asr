@@ -313,7 +313,7 @@ def write_jsonl_chunk(path: str, rows: list[dict[str, Any]]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-@hydra.main(version_base=None, config_path="configs", config_name="transcription")
+@hydra.main(version_base=None, config_path="../configs", config_name="transcription")
 def main(cfg: DictConfig) -> None:
     print("=== Effective config ===")
     print(OmegaConf.to_yaml(cfg))

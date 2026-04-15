@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config-path",
-        default=str(Path(__file__).resolve().parent / "configs" / "encoding.yaml"),
+        default=str(Path(__file__).resolve().parents[1] / "configs" / "encoding.yaml"),
         help="Path to the encoding YAML config",
     )
 
