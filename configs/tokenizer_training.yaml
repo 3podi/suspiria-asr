@@ -1,0 +1,31 @@
+dataset:
+  name: "uonlp/CulturaX"
+  config_name: "it"
+  split: "train"
+  text_field: "text"
+  streaming: true
+  token: null
+  max_examples: null
+  min_text_length: 1
+
+tokenizer:
+  vocab_size: 32000
+  min_frequency: 2
+  model_max_length: 16384
+  lowercase: false
+  add_prefix_space: false
+  unk_token: "[UNK]"
+  bos_token: "[BOS]"
+  eos_token: "[EOS]"
+  pad_wait_token: "[P]"
+  word_start_token: "[W]"
+  additional_special_tokens: []
+  pad_token: null
+
+output:
+  dir: "out/tokenizers/culturax_it_bpe"
+  enabled: false
+  repo_id: null
+  private: true
+  token: null
+  commit_message: "Upload tokenizer"
