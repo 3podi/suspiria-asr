@@ -11,6 +11,7 @@ from training.data.collator import SpecialTokenIds
 @dataclass
 class MetricCounts:
     loss_sum: float = 0.0
+    unweighted_loss_sum: float = 0.0
     batch_count: int = 0
     valid_count: int = 0
     correct_count: int = 0
@@ -94,6 +95,7 @@ def compute_batch_metric_counts(
     *,
     special_tokens: SpecialTokenIds,
     loss_value: float,
+    unweighted_loss_value: float | None = None,
     ignore_index: int = -100,
 ) -> MetricCounts:
     pred_ids = logits.argmax(dim=-1)
@@ -116,6 +118,7 @@ def compute_batch_metric_counts(
 
     return MetricCounts(
         loss_sum=float(loss_value),
+        unweighted_loss_sum=float(loss_value if unweighted_loss_value is None else unweighted_loss_value),
         batch_count=1,
         valid_count=int(valid_mask.sum().item()),
         correct_count=int(correct.sum().item()),
@@ -155,12 +158,14 @@ def finalize_metric_counts(counts: MetricCounts) -> dict[str, float]:
     word_precision = _safe_div(counts.word_start_tp, counts.word_start_tp + counts.word_start_fp)
     word_recall = _safe_div(counts.word_start_tp, counts.word_start_tp + counts.word_start_fn)
     avg_loss = _safe_div(counts.loss_sum, counts.batch_count)
+    avg_unweighted_loss = _safe_div(counts.unweighted_loss_sum, counts.batch_count)
     try:
         perplexity = math.exp(avg_loss) if not math.isnan(avg_loss) else float("nan")
     except OverflowError:
         perplexity = float("inf")
     return {
         "loss": avg_loss,
+        "unweighted_loss": avg_unweighted_loss,
         "perplexity": perplexity,
         "num_batches": float(counts.batch_count),
         "overall/token_accuracy": _safe_div(counts.correct_count, counts.valid_count),

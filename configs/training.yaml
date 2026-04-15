@@ -57,6 +57,12 @@ optimization:
   grad_clip_norm: 1.0
   max_steps: 1000
 
+loss:
+  bos_factor: 1.0
+  eos_factor: 1.0
+  pad_wait_factor: 1.0
+  word_start_factor: 1.0
+
 ema:
   enabled: false
   decay: 0.999

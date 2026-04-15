@@ -7,11 +7,19 @@ import safetensors.torch
 import torch
 
 from models.decoder import DecoderLM
+from training.data.collator import SpecialTokenIds
 from training.config import DecoderConfig
 from training.utils.config import resolve_torch_dtype
 
 
-def build_model(cfg: dict[str, Any], *, vocab_size: int, device: torch.device) -> DecoderLM:
+def build_model(
+    cfg: dict[str, Any],
+    *,
+    vocab_size: int,
+    device: torch.device,
+    special_tokens: SpecialTokenIds,
+) -> DecoderLM:
+    loss_cfg = cfg.get("loss", {})
     model_cfg = DecoderConfig(
         vocab_size=vocab_size,
         audio_input_dim=int(cfg["model"]["audio_input_dim"]),
@@ -27,6 +35,14 @@ def build_model(cfg: dict[str, Any], *, vocab_size: int, device: torch.device) -
         time_condition_dim=int(cfg["model"].get("time_condition_dim", 32)),
         time_embedding_theta=float(cfg["model"].get("time_embedding_theta", 10_000.0)),
         tie_word_embeddings=bool(cfg["model"].get("tie_word_embeddings", True)),
+        bos_token_id=int(special_tokens.bos),
+        eos_token_id=int(special_tokens.eos),
+        pad_wait_token_id=int(special_tokens.pad_wait),
+        word_start_token_id=int(special_tokens.word_start),
+        loss_bos_factor=float(loss_cfg.get("bos_factor", 1.0)),
+        loss_eos_factor=float(loss_cfg.get("eos_factor", 1.0)),
+        loss_pad_wait_factor=float(loss_cfg.get("pad_wait_factor", 1.0)),
+        loss_word_start_factor=float(loss_cfg.get("word_start_factor", 1.0)),
     )
     model_dtype = resolve_torch_dtype(
         cfg["runtime"].get("model_dtype", "bf16"),

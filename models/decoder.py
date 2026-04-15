@@ -152,6 +152,54 @@ class DecoderLM(nn.Module):
         if not config.tie_word_embeddings:
             self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
+    def _compute_loss(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        per_token_loss = F.cross_entropy(
+            logits,
+            labels,
+            ignore_index=-100,
+            reduction="none",
+        )
+        valid_mask = labels != -100
+        if not valid_mask.any():
+            zero = per_token_loss.sum()
+            return zero, zero
+
+        weights = torch.ones_like(per_token_loss)
+        if self.config.loss_bos_factor != 1.0:
+            weights = torch.where(
+                labels == self.config.bos_token_id,
+                weights * float(self.config.loss_bos_factor),
+                weights,
+            )
+        if self.config.loss_eos_factor != 1.0:
+            weights = torch.where(
+                labels == self.config.eos_token_id,
+                weights * float(self.config.loss_eos_factor),
+                weights,
+            )
+        if self.config.loss_pad_wait_factor != 1.0:
+            weights = torch.where(
+                labels == self.config.pad_wait_token_id,
+                weights * float(self.config.loss_pad_wait_factor),
+                weights,
+            )
+        if self.config.loss_word_start_factor != 1.0:
+            weights = torch.where(
+                labels == self.config.word_start_token_id,
+                weights * float(self.config.loss_word_start_factor),
+                weights,
+            )
+
+        valid_mask_f = valid_mask.to(per_token_loss.dtype)
+        weighted_loss = per_token_loss * weights * valid_mask_f
+        unweighted_loss = per_token_loss * valid_mask_f
+        normalizer = (weights * valid_mask_f).sum().clamp_min(1.0)
+        unweighted_normalizer = valid_mask_f.sum().clamp_min(1.0)
+        return (
+            weighted_loss.sum() / normalizer,
+            unweighted_loss.sum() / unweighted_normalizer,
+        )
+
     def _compute_time_embedding(self, delay_steps: torch.Tensor) -> torch.Tensor:
         device = delay_steps.device
         half_dim = self.config.hidden_size // 2
@@ -195,5 +243,5 @@ class DecoderLM(nn.Module):
         else:
             assert self.lm_head is not None
             logits = self.lm_head(hidden_states)
-        loss = F.cross_entropy(logits, batch["packed_labels"], ignore_index=-100)
-        return {"loss": loss, "logits": logits}
+        loss, unweighted_loss = self._compute_loss(logits, batch["packed_labels"])
+        return {"loss": loss, "unweighted_loss": unweighted_loss, "logits": logits}

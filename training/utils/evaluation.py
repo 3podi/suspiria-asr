@@ -37,6 +37,7 @@ def evaluate_loss(
             batch["packed_labels"],
             special_tokens=special_tokens,
             loss_value=float(outputs["loss"].detach().cpu()),
+            unweighted_loss_value=float(outputs["unweighted_loss"].detach().cpu()),
         )
         merge_metric_counts(counts, batch_counts)
 

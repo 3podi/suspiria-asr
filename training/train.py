@@ -98,7 +98,12 @@ def main(cfg: DictConfig) -> None:
             split="test",
         )
 
-    model = build_model(cfg, vocab_size=len(tokenizer), device=device)
+    model = build_model(
+        cfg,
+        vocab_size=len(tokenizer),
+        device=device,
+        special_tokens=special_tokens,
+    )
 
     pretrained_weights_path = cfg["model"].get("pretrained_weights_path")
     if pretrained_weights_path not in (None, "", "null", "None"):
@@ -168,6 +173,7 @@ def main(cfg: DictConfig) -> None:
         print(
             "[TEST] "
             f"loss={test_metrics['loss']:.4f} "
+            f"unweighted_loss={test_metrics['unweighted_loss']:.4f} "
             f"perplexity={test_metrics['perplexity']:.4f} "
             f"batches={int(test_metrics['num_batches'])}"
         )
@@ -220,6 +226,7 @@ def main(cfg: DictConfig) -> None:
                     batch["packed_labels"],
                     special_tokens=special_tokens,
                     loss_value=float(outputs["loss"].detach().cpu()),
+                    unweighted_loss_value=float(outputs["unweighted_loss"].detach().cpu()),
                 )
                 if log_window_metric_counts is None:
                     log_window_metric_counts = batch_counts
@@ -230,6 +237,7 @@ def main(cfg: DictConfig) -> None:
                 elapsed = max(time.perf_counter() - log_window_start, 1e-6)
                 train_log = {
                     "train/loss": float(outputs["loss"].detach().cpu()),
+                    "train/unweighted_loss": float(outputs["unweighted_loss"].detach().cpu()),
                     "train/perplexity": float(torch.exp(outputs["loss"].detach().cpu()).item()),
                     "train/lr": lr,
                     "train/grad_norm": float("nan") if grad_norm is None else grad_norm,
@@ -269,6 +277,7 @@ def main(cfg: DictConfig) -> None:
                     "[VAL] "
                     f"step={step} "
                     f"loss={val_metrics['loss']:.4f} "
+                    f"unweighted_loss={val_metrics['unweighted_loss']:.4f} "
                     f"perplexity={val_metrics['perplexity']:.4f} "
                     f"batches={int(val_metrics['num_batches'])}"
                 )
@@ -307,6 +316,7 @@ def main(cfg: DictConfig) -> None:
             "[VAL] "
             f"final_step={step} "
             f"loss={val_metrics['loss']:.4f} "
+            f"unweighted_loss={val_metrics['unweighted_loss']:.4f} "
             f"perplexity={val_metrics['perplexity']:.4f} "
             f"batches={int(val_metrics['num_batches'])}"
         )
@@ -325,6 +335,7 @@ def main(cfg: DictConfig) -> None:
             "[TEST] "
             f"final_step={step} "
             f"loss={test_metrics['loss']:.4f} "
+            f"unweighted_loss={test_metrics['unweighted_loss']:.4f} "
             f"perplexity={test_metrics['perplexity']:.4f} "
             f"batches={int(test_metrics['num_batches'])}"
         )
