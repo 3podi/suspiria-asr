@@ -193,8 +193,8 @@ class DecoderLM(nn.Module):
         valid_mask_f = valid_mask.to(per_token_loss.dtype)
         weighted_loss = per_token_loss * weights * valid_mask_f
         unweighted_loss = per_token_loss * valid_mask_f
-        normalizer = (weights * valid_mask_f).sum().clamp_min(1.0)
-        unweighted_normalizer = valid_mask_f.sum().clamp_min(1.0)
+        normalizer = (weights * valid_mask_f).sum()
+        unweighted_normalizer = valid_mask_f.sum()
         return (
             weighted_loss.sum() / normalizer,
             unweighted_loss.sum() / unweighted_normalizer,
