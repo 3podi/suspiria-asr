@@ -1,0 +1,77 @@
+dataset:
+  repo_id: "disco-eth/EuroSpeech"
+  country: "france"
+  splits: ["train", "validation", "test"]
+  patterns:
+    train: "train-*.parquet"
+    validation: "validation-*.parquet"
+    test: "test-*.parquet"
+  split: "train"
+  streaming: true
+  data_files: null
+  config: null
+  key_column: "key"
+
+audio:
+  audio_column: "audio"
+  cast_audio_column: true
+
+output:
+  latent_dir: "out/latents"
+  manifest_dir: "out/latents/manifests"
+  samples_per_parquet: 1000
+
+encoding:
+  batch_size: 8
+  num_workers: 1
+  prefetch_factor: 2
+  persistent_workers: true
+  pin_memory: true
+  max_pending_save_batches: 2
+  flush_every_source_shards: 1
+  compile_model_calls: false
+  compile_dynamic: true
+  compile_mode: null
+  max_samples: null
+  max_seconds: 30
+  speaker_proj_seconds: 5.0
+  device: null
+  cache_dir: null
+
+mimi:
+  dtype: bfloat16
+  sample_rate: 24000
+  channels: 1
+  frame_rate: 12.5
+  repo_id: null
+  weights_filename: null
+  weights_path: model.safetensors
+  seanet:
+    dimension: 512
+    channels: 1
+    n_filters: 64
+    n_residual_layers: 1
+    ratios:
+      - 6
+      - 5
+      - 4
+    kernel_size: 7
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  transformer:
+    d_model: 512
+    num_heads: 8
+    num_layers: 2
+    layer_scale: 0.01
+    context: 250
+    dim_feedforward: 2048
+    input_dimension: 512
+    max_period: 10000
+    output_dimensions:
+      - 512
+  quantizer:
+    dimension: 32
+    output_dimension: 512

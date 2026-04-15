@@ -1,0 +1,50 @@
+dataset:
+  repo_id: "disco-eth/EuroSpeech"
+  country: "france"
+  splits: ["train", "validation", "test"]
+  patterns:
+    train: "train-*.parquet"
+    validation: "validation-*.parquet"
+    test: "test-*.parquet"
+  streaming: true
+
+audio:
+  audio_column: "audio"
+  cast_audio_column: false
+  target_sampling_rate: 16000
+
+batching:
+  dataset_batch_size: 192
+  num_workers: 1        
+  prefetch_factor: 4    
+  max_steps_per_split: null # null for full processing, int for max num batches per split
+
+asr:
+  model: "Qwen/Qwen3-ASR-1.7B"
+  forced_aligner: "Qwen/Qwen3-ForcedAligner-0.6B"
+  language: "French"        # set null to autodetect
+  return_timestamps: true   
+
+vllm:
+  disable_log_stats: true
+  gpu_memory_utilization: 0.5
+  max_model_len: 512
+  max_inference_batch_size: 192
+  max_num_batched_tokens: 16384
+  max_new_tokens: 128
+  enforce_eager: false
+  enable_chunked_prefill: true
+  forced_aligner_dtype: "bfloat16"
+  forced_aligner_device_map: "cuda:0"
+
+output:
+  out_dir: "out/transcriptions"
+  # shard files under out_dir/<country>/<split>/
+  file_prefix: "eurospeech_qwen3asr"
+
+upload:
+  enabled: true
+  repo_id: "3podi/eurospeech-qwen3asr"
+  private: true
+  skip_existing: true
+  upload_every_batches: 10
