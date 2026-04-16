@@ -34,7 +34,7 @@ class MaterializedLatentDataset(Dataset):
         sample = self.samples[index]
         sample_path = self.materialized_root / sample.country / sample.split / f"{sample.key}.pt"
         payload = torch.load(sample_path, map_location="cpu")
-        projected = payload["projected"].float()
+        projected = payload["projected"]
         if sample.num_frames is None:
             raise ValueError(f"Manifest row for {sample.key} is missing num_frames.")
         projected = projected[: sample.num_frames].contiguous()
