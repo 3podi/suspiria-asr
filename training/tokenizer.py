@@ -40,10 +40,19 @@ def load_tokenizer(tokenizer_cfg: dict[str, Any]) -> ResolvedTokenizer:
         replace_additional_special_tokens=False,
     )
 
-    return ResolvedTokenizer(
+    resolved = ResolvedTokenizer(
         tokenizer=tokenizer,
         bos_token_id=int(tokenizer.convert_tokens_to_ids(bos_token)),
         eos_token_id=int(tokenizer.convert_tokens_to_ids(eos_token)),
         pad_wait_token_id=int(tokenizer.convert_tokens_to_ids(pad_wait)),
         word_start_token_id=int(tokenizer.convert_tokens_to_ids(word_start)),
     )
+    print(
+        "[TOKENIZER] "
+        f"vocab_size={len(tokenizer)} "
+        f"bos={bos_token!r}:{resolved.bos_token_id} "
+        f"eos={eos_token!r}:{resolved.eos_token_id} "
+        f"pad_wait={pad_wait!r}:{resolved.pad_wait_token_id} "
+        f"word_start={word_start!r}:{resolved.word_start_token_id}"
+    )
+    return resolved
