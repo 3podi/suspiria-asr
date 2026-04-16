@@ -81,14 +81,17 @@ def build_delayed_target_stream(
         left_pad_steps=left_pad_steps,
         fallback_real_steps=real_steps,
     )
+    groups = sorted(groups, key=lambda item: item[0])
 
     targets: list[int] = []
     audio_steps: list[torch.Tensor] = []
     pending_tokens: list[int] = []
     group_idx = 0
     time_step = 0
-    eos_emitted = False
-    max_steps = left_pad_steps + real_steps + delay_steps + sum(len(ids) + 2 for _, ids in groups) + 8
+    min_eos_step = left_pad_steps + real_steps
+    latest_group_step = max((step for step, _ in groups), default=0)
+    total_group_tokens = sum(1 + len(ids) for _, ids in groups)
+    max_steps = max(min_eos_step, latest_group_step) + total_group_tokens + 1
 
     def latent_for_step(step_idx: int) -> torch.Tensor:
         latent_idx = step_idx - left_pad_steps
@@ -96,27 +99,33 @@ def build_delayed_target_stream(
             return latents[latent_idx]
         return torch.zeros_like(latents[0])
 
-    while not eos_emitted:
+    while True:
         if time_step > max_steps:
             raise RuntimeError(f"Alignment overflow for sample {key}: failed to emit EOS within {max_steps} steps.")
 
         audio_steps.append(latent_for_step(time_step))
 
         if time_step == 0:
-            targets.append(int(bos_token_id))
+            token_id = int(bos_token_id)
         elif pending_tokens:
-            targets.append(int(pending_tokens.pop(0)))
+            token_id = int(pending_tokens.pop(0))
         elif group_idx < len(groups) and groups[group_idx][0] <= time_step:
-            token_ids = groups[group_idx][1]
-            group_idx += 1
-            pending_tokens = [int(tok) for tok in token_ids]
-            targets.append(int(word_start_token_id))
-        elif group_idx >= len(groups):
-            targets.append(int(eos_token_id))
-            eos_emitted = True
+            group_tokens: list[int] = []
+            while group_idx < len(groups) and groups[group_idx][0] <= time_step:
+                group_tokens.append(int(word_start_token_id))
+                group_tokens.extend(int(tok) for tok in groups[group_idx][1])
+                group_idx += 1
+            token_id = group_tokens[0]
+            pending_tokens = group_tokens[1:]
+        elif group_idx >= len(groups) and time_step >= min_eos_step:
+            token_id = int(eos_token_id)
         else:
-            targets.append(int(pad_wait_token_id))
+            token_id = int(pad_wait_token_id)
+
+        targets.append(token_id)
         time_step += 1
+        if token_id == int(eos_token_id):
+            break
 
     target_tensor = torch.tensor(targets, dtype=torch.long)
     input_ids = torch.empty_like(target_tensor)
@@ -131,4 +140,3 @@ def build_delayed_target_stream(
         audio_features=torch.stack(audio_steps, dim=0),
         delay_steps=int(delay_steps),
     )
-
