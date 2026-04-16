@@ -14,6 +14,11 @@ from huggingface_hub import hf_hub_download, snapshot_download
 
 from training.data.types import PairedManifestRow
 
+try:
+    from tqdm.auto import tqdm
+except Exception:
+    tqdm = None
+
 
 def _is_empty_path(value: Any) -> bool:
     if value is None:
@@ -238,6 +243,12 @@ def _materialize_shard_rows(
     return written, skipped
 
 
+def _progress(iterable, *, total: int, desc: str):
+    if tqdm is None:
+        return iterable
+    return tqdm(iterable, total=total, desc=desc, unit="file")
+
+
 def materialize_latent_dataset(
     *,
     dataset_cfg: dict[str, Any],
@@ -268,6 +279,12 @@ def materialize_latent_dataset(
 
     shard_map: dict[str, Path] = {}
     shard_items = sorted(rows_by_shard.items(), key=lambda item: item[0])
+    total_samples = len(rows)
+    total_shards = len(shard_items)
+    print(
+        f"[MATERIALIZE] country={country} samples={total_samples} "
+        f"shards={total_shards} workers={materialization_num_workers}"
+    )
     if materialization_num_workers > 1:
         with ThreadPoolExecutor(max_workers=materialization_num_workers) as pool:
             futures = [
@@ -280,11 +297,11 @@ def materialize_latent_dataset(
                 )
                 for shard_rel_path, _ in shard_items
             ]
-            for future in futures:
+            for future in _progress(futures, total=len(futures), desc="Resolving parquet shards"):
                 shard_rel_path, shard_path = future.result()
                 shard_map[shard_rel_path] = shard_path
     else:
-        for shard_rel_path, _ in shard_items:
+        for shard_rel_path, _ in _progress(shard_items, total=len(shard_items), desc="Resolving parquet shards"):
             _, shard_path = _resolve_single_shard(
                 shard_rel_path,
                 dataset_cfg=dataset_cfg,
@@ -309,12 +326,12 @@ def materialize_latent_dataset(
         max_workers = min(materialization_num_workers, len(worker_jobs), max(1, os.cpu_count() or 1))
         with ProcessPoolExecutor(max_workers=max_workers) as pool:
             futures = [pool.submit(_materialize_shard_rows, **job) for job in worker_jobs]
-            for future in futures:
+            for future in _progress(futures, total=len(futures), desc="Materializing latent shards"):
                 shard_written, shard_skipped = future.result()
                 written += shard_written
                 skipped += shard_skipped
     else:
-        for job in worker_jobs:
+        for job in _progress(worker_jobs, total=len(worker_jobs), desc="Materializing latent shards"):
             shard_written, shard_skipped = _materialize_shard_rows(**job)
             written += shard_written
             skipped += shard_skipped
