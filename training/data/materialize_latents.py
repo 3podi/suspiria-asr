@@ -28,6 +28,19 @@ def _is_empty_path(value: Any) -> bool:
     return False
 
 
+def _has_usable_timestamps_payload(payload: dict[str, Any]) -> bool:
+    timestamps = payload.get("timestamps")
+    if not timestamps:
+        return False
+    for item in timestamps:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text", "")).strip()
+        if text and item.get("end") is not None:
+            return True
+    return False
+
+
 def load_manifest_rows(manifest_root: Path, manifest_glob: str) -> list[PairedManifestRow]:
     rows: list[PairedManifestRow] = []
     for path in sorted(manifest_root.glob(manifest_glob)):
@@ -37,6 +50,8 @@ def load_manifest_rows(manifest_root: Path, manifest_glob: str) -> list[PairedMa
                 if not line:
                     continue
                 payload = json.loads(line)
+                if not _has_usable_timestamps_payload(payload):
+                    continue
                 rows.append(
                     PairedManifestRow(
                         key=str(payload["key"]),
@@ -91,6 +106,8 @@ def load_split_manifest_rows(
             if not line:
                 continue
             payload = json.loads(line)
+            if not _has_usable_timestamps_payload(payload):
+                continue
             rows.append(
                 PairedManifestRow(
                     key=str(payload["key"]),
