@@ -80,14 +80,18 @@ def train_bpe_tokenizer(tokenizer_cfg: dict[str, Any], dataset_cfg: dict[str, An
     )
     tokenizer.train_from_iterator(iter_dataset_texts(dataset_cfg), trainer=trainer)
 
+    additional_special_tokens = [token for token in special_tokens if token not in {unk_token, bos_token, eos_token}]
     hf_tokenizer = PreTrainedTokenizerFast(
         tokenizer_object=tokenizer,
         unk_token=unk_token,
         bos_token=bos_token,
         eos_token=eos_token,
-        additional_special_tokens=[token for token in special_tokens if token not in {unk_token, bos_token, eos_token}],
         model_max_length=int(tokenizer_cfg.get("model_max_length", 16384)),
         clean_up_tokenization_spaces=False,
+    )
+    hf_tokenizer.add_special_tokens(
+        {"additional_special_tokens": additional_special_tokens},
+        replace_additional_special_tokens=True,
     )
 
     explicit_pad_token = tokenizer_cfg.get("pad_token")
