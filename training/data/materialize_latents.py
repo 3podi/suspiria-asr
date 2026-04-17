@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 import io
 import json
 import os
@@ -10,7 +10,7 @@ from typing import Any
 
 import pyarrow.parquet as pq
 import torch
-from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub import snapshot_download
 
 from training.data.types import PairedManifestRow
 
@@ -153,65 +153,53 @@ def _load_tensor_from_bytes(blob: bytes) -> torch.Tensor:
     return torch.load(buffer, map_location="cpu")
 
 
-def _download_shard_if_needed(
-    row: PairedManifestRow,
+def _snapshot_latent_shards(
+    latent_shard_paths: list[str],
     *,
     dataset_cfg: dict[str, Any],
     parquet_cache_dir: Path,
     dataset_root: Path | None,
-) -> Path:
+) -> dict[str, Path]:
+    shard_map: dict[str, Path] = {}
     if dataset_root is not None:
-        local_path = (dataset_root / row.latent_shard_path).resolve()
-        if local_path.exists():
-            return local_path
+        missing = []
+        for shard_rel_path in latent_shard_paths:
+            local_path = (dataset_root / shard_rel_path).resolve()
+            if local_path.exists():
+                shard_map[shard_rel_path] = local_path
+            else:
+                missing.append(shard_rel_path)
+        if not missing:
+            return shard_map
 
     repo_id = dataset_cfg.get("repo_id")
     if _is_empty_path(repo_id):
         raise FileNotFoundError(
-            f"Latent shard {row.latent_shard_path} was not found locally and dataset.repo_id is unset."
+            "Some latent shards were not found locally and dataset.repo_id is unset."
         )
     parquet_cache_dir.mkdir(parents=True, exist_ok=True)
-    return Path(
-        hf_hub_download(
+    snapshot_root = Path(
+        snapshot_download(
             repo_id=str(repo_id),
             repo_type="dataset",
             revision=dataset_cfg.get("revision"),
-            filename=row.latent_shard_path,
+            allow_patterns=latent_shard_paths,
             local_dir=str(parquet_cache_dir),
             local_dir_use_symlinks=False,
         )
     ).resolve()
+    for shard_rel_path in latent_shard_paths:
+        if shard_rel_path in shard_map:
+            continue
+        local_path = (snapshot_root / shard_rel_path).resolve()
+        if not local_path.exists():
+            raise FileNotFoundError(f"Downloaded snapshot is missing latent shard: {local_path}")
+        shard_map[shard_rel_path] = local_path
+    return shard_map
 
 
 def _materialized_sample_path(materialized_root: Path, row: PairedManifestRow) -> Path:
     return materialized_root / row.country / row.split / f"{row.key}.pt"
-
-
-def _resolve_single_shard(
-    latent_shard_path: str,
-    *,
-    dataset_cfg: dict[str, Any],
-    parquet_cache_dir: Path,
-    dataset_root: Path | None,
-) -> tuple[str, Path]:
-    probe_row = PairedManifestRow(
-        key="",
-        country="",
-        split="",
-        transcription="",
-        latent_shard_path=latent_shard_path,
-        latent_row_idx=0,
-        num_frames=None,
-        speaker_prefix_frames=None,
-        timestamps=None,
-    )
-    resolved = _download_shard_if_needed(
-        probe_row,
-        dataset_cfg=dataset_cfg,
-        parquet_cache_dir=parquet_cache_dir,
-        dataset_root=dataset_root,
-    )
-    return latent_shard_path, resolved
 
 
 def _materialize_shard_rows(
@@ -294,7 +282,6 @@ def materialize_latent_dataset(
     for row in rows:
         rows_by_shard[row.latent_shard_path].append(row)
 
-    shard_map: dict[str, Path] = {}
     shard_items = sorted(rows_by_shard.items(), key=lambda item: item[0])
     total_samples = len(rows)
     total_shards = len(shard_items)
@@ -302,30 +289,13 @@ def materialize_latent_dataset(
         f"[MATERIALIZE] country={country} samples={total_samples} "
         f"shards={total_shards} workers={materialization_num_workers}"
     )
-    if materialization_num_workers > 1:
-        with ThreadPoolExecutor(max_workers=materialization_num_workers) as pool:
-            futures = [
-                pool.submit(
-                    _resolve_single_shard,
-                    shard_rel_path,
-                    dataset_cfg=dataset_cfg,
-                    parquet_cache_dir=parquet_cache_dir,
-                    dataset_root=dataset_root,
-                )
-                for shard_rel_path, _ in shard_items
-            ]
-            for future in _progress(futures, total=len(futures), desc="Resolving parquet shards"):
-                shard_rel_path, shard_path = future.result()
-                shard_map[shard_rel_path] = shard_path
-    else:
-        for shard_rel_path, _ in _progress(shard_items, total=len(shard_items), desc="Resolving parquet shards"):
-            _, shard_path = _resolve_single_shard(
-                shard_rel_path,
-                dataset_cfg=dataset_cfg,
-                parquet_cache_dir=parquet_cache_dir,
-                dataset_root=dataset_root,
-            )
-            shard_map[shard_rel_path] = shard_path
+    print("[MATERIALIZE] downloading latent parquet snapshot with huggingface_hub")
+    shard_map = _snapshot_latent_shards(
+        [shard_rel_path for shard_rel_path, _ in shard_items],
+        dataset_cfg=dataset_cfg,
+        parquet_cache_dir=parquet_cache_dir,
+        dataset_root=dataset_root,
+    )
 
     written = 0
     skipped = 0
