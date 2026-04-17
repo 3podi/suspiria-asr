@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--key", default=None, help="Sample key to inspect. Overrides --index when set.")
     parser.add_argument("--delay-ms", type=int, default=None, help="Fixed delay in ms. Defaults to dataset.delay_max_ms.")
     parser.add_argument("--max-steps", type=int, default=None, help="Only print the first N aligned steps.")
+    parser.add_argument(
+        "--summary-samples",
+        type=int,
+        default=100,
+        help="Number of samples from the selected split to aggregate target percentages over.",
+    )
     parser.add_argument("--output-path", default=None, help="Optional path to write the Markdown report.")
     return parser.parse_args()
 
@@ -116,6 +122,92 @@ def summarize_targets_after_left_padding(
     }
 
 
+def align_sample(
+    *,
+    cfg: dict[str, Any],
+    sample: dict[str, Any],
+    tokenizer,
+    special_tokens: SpecialTokenIds,
+    delay_ms: int,
+):
+    step_ms = int(cfg["dataset"].get("step_ms", 80))
+    if delay_ms % step_ms != 0:
+        raise ValueError(f"--delay-ms must be a multiple of step_ms={step_ms}.")
+    return build_delayed_target_stream(
+        key=str(sample["key"]),
+        latents=sample["projected"],
+        transcript=str(sample["transcription"]),
+        timestamps=sample.get("timestamps"),
+        tokenizer=tokenizer,
+        bos_token_id=special_tokens.bos,
+        eos_token_id=special_tokens.eos,
+        pad_wait_token_id=special_tokens.pad_wait,
+        word_start_token_id=special_tokens.word_start,
+        delay_steps=delay_ms // step_ms,
+        left_pad_steps=int(cfg["dataset"].get("left_pad_steps", 0)),
+        step_ms=step_ms,
+    )
+
+
+def aggregate_target_summary(
+    *,
+    cfg: dict[str, Any],
+    dataset: MaterializedLatentDataset,
+    tokenizer,
+    special_tokens: SpecialTokenIds,
+    delay_ms: int,
+    num_samples: int,
+) -> dict[str, float]:
+    left_pad_steps = int(cfg["dataset"].get("left_pad_steps", 0))
+    limit = min(max(0, int(num_samples)), len(dataset))
+    counted_steps = 0
+    text_or_w_count = 0
+    pad_count = 0
+
+    for sample_idx in range(limit):
+        aligned = align_sample(
+            cfg=cfg,
+            sample=dataset[sample_idx],
+            tokenizer=tokenizer,
+            special_tokens=special_tokens,
+            delay_ms=delay_ms,
+        )
+        for token_id in aligned.labels.tolist()[left_pad_steps:]:
+            counted_steps += 1
+            kind = token_kind(int(token_id), special_tokens)
+            if kind in {"TEXT", "W"}:
+                text_or_w_count += 1
+            elif kind == "P":
+                pad_count += 1
+
+    return {
+        "num_samples": float(limit),
+        "counted_steps": float(counted_steps),
+        "text_or_w_count": float(text_or_w_count),
+        "text_or_w_pct": float("nan") if counted_steps == 0 else 100.0 * text_or_w_count / counted_steps,
+        "pad_count": float(pad_count),
+        "pad_pct": float("nan") if counted_steps == 0 else 100.0 * pad_count / counted_steps,
+    }
+
+
+def render_aggregate_summary(summary: dict[str, float]) -> str:
+    return "\n".join(
+        [
+            "## Aggregate Target Summary",
+            "",
+            "Counts exclude the left-padding region.",
+            "",
+            f"- summary_samples: `{int(summary['num_samples'])}`",
+            f"- counted_steps: `{int(summary['counted_steps'])}`",
+            f"- text_or_w_count: `{int(summary['text_or_w_count'])}`",
+            f"- text_or_w_pct: `{summary['text_or_w_pct']:.2f}%`",
+            f"- pad_count: `{int(summary['pad_count'])}`",
+            f"- pad_pct: `{summary['pad_pct']:.2f}%`",
+            "",
+        ]
+    )
+
+
 def build_report(
     *,
     cfg: dict[str, Any],
@@ -135,19 +227,12 @@ def build_report(
     latents = sample["projected"]
     real_steps = int(latents.shape[0])
 
-    aligned = build_delayed_target_stream(
-        key=str(sample["key"]),
-        latents=latents,
-        transcript=str(sample["transcription"]),
-        timestamps=sample.get("timestamps"),
+    aligned = align_sample(
+        cfg=cfg,
+        sample=sample,
         tokenizer=tokenizer,
-        bos_token_id=special_tokens.bos,
-        eos_token_id=special_tokens.eos,
-        pad_wait_token_id=special_tokens.pad_wait,
-        word_start_token_id=special_tokens.word_start,
-        delay_steps=delay_steps,
-        left_pad_steps=left_pad_steps,
-        step_ms=step_ms,
+        special_tokens=special_tokens,
+        delay_ms=delay_ms,
     )
 
     labels = aligned.labels.tolist()
@@ -262,6 +347,14 @@ def main() -> None:
     sample_index = find_sample_index(dataset, args.key) if args.key else int(args.index)
     sample = dataset[sample_index]
     delay_ms = int(args.delay_ms if args.delay_ms is not None else cfg["dataset"].get("delay_max_ms", 2400))
+    aggregate_summary = aggregate_target_summary(
+        cfg=cfg,
+        dataset=dataset,
+        tokenizer=tokenizer,
+        special_tokens=special_tokens,
+        delay_ms=delay_ms,
+        num_samples=args.summary_samples,
+    )
 
     report = build_report(
         cfg=cfg,
@@ -273,6 +366,7 @@ def main() -> None:
         delay_ms=delay_ms,
         max_steps=args.max_steps,
     )
+    report = report + "\n" + render_aggregate_summary(aggregate_summary)
 
     if args.output_path:
         output_path = Path(args.output_path).expanduser().resolve()
