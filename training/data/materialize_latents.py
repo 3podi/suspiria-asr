@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 import io
 import json
@@ -153,29 +152,28 @@ def _load_tensor_from_bytes(blob: bytes) -> torch.Tensor:
     return torch.load(buffer, map_location="cpu")
 
 
-def _snapshot_latent_shards(
-    latent_shard_paths: list[str],
+def _snapshot_country_split_latents(
     *,
+    country: str,
+    splits: list[str],
     dataset_cfg: dict[str, Any],
     parquet_cache_dir: Path,
     dataset_root: Path | None,
 ) -> dict[str, Path]:
-    shard_map: dict[str, Path] = {}
+    patterns = [f"latents/{country}/{split}/*.parquet" for split in splits]
     if dataset_root is not None:
-        missing = []
-        for shard_rel_path in latent_shard_paths:
-            local_path = (dataset_root / shard_rel_path).resolve()
-            if local_path.exists():
-                shard_map[shard_rel_path] = local_path
-            else:
-                missing.append(shard_rel_path)
-        if not missing:
-            return shard_map
+        local_shards = {
+            path.relative_to(dataset_root).as_posix(): path.resolve()
+            for split in splits
+            for path in sorted((dataset_root / "latents" / country / split).glob("*.parquet"))
+        }
+        if local_shards:
+            return local_shards
 
     repo_id = dataset_cfg.get("repo_id")
     if _is_empty_path(repo_id):
         raise FileNotFoundError(
-            "Some latent shards were not found locally and dataset.repo_id is unset."
+            f"No local parquet shards found for country={country!r} splits={splits!r} and dataset.repo_id is unset."
         )
     parquet_cache_dir.mkdir(parents=True, exist_ok=True)
     snapshot_root = Path(
@@ -183,29 +181,37 @@ def _snapshot_latent_shards(
             repo_id=str(repo_id),
             repo_type="dataset",
             revision=dataset_cfg.get("revision"),
-            allow_patterns=latent_shard_paths,
+            allow_patterns=patterns,
             local_dir=str(parquet_cache_dir),
             local_dir_use_symlinks=False,
         )
     ).resolve()
-    for shard_rel_path in latent_shard_paths:
-        if shard_rel_path in shard_map:
-            continue
-        local_path = (snapshot_root / shard_rel_path).resolve()
-        if not local_path.exists():
-            raise FileNotFoundError(f"Downloaded snapshot is missing latent shard: {local_path}")
-        shard_map[shard_rel_path] = local_path
-    return shard_map
+    downloaded_shards = {
+        path.relative_to(snapshot_root).as_posix(): path.resolve()
+        for split in splits
+        for path in sorted((snapshot_root / "latents" / country / split).glob("*.parquet"))
+    }
+    if not downloaded_shards:
+        raise FileNotFoundError(
+            f"Downloaded snapshot contains no parquet shards for country={country!r} splits={splits!r}."
+        )
+    return downloaded_shards
 
 
-def _materialized_sample_path(materialized_root: Path, row: PairedManifestRow) -> Path:
-    return materialized_root / row.country / row.split / f"{row.key}.pt"
+def _materialized_sample_path(
+    materialized_root: Path,
+    *,
+    country: str,
+    split: str,
+    key: str,
+) -> Path:
+    return materialized_root / country / split / f"{key}.pt"
 
 
 def _materialize_shard_rows(
     *,
     shard_path: Path,
-    rows: list[PairedManifestRow],
+    latent_shard_path: str,
     materialized_root: Path,
     force_rematerialize: bool,
     materialize_speaker_prefix: bool,
@@ -214,31 +220,32 @@ def _materialize_shard_rows(
     written = 0
     skipped = 0
 
-    for row in rows:
-        sample_path = _materialized_sample_path(materialized_root, row)
+    for row_idx, record in enumerate(table.to_pylist()):
+        key = str(record["key"])
+        country = str(record.get("country", "unknown_country"))
+        split = str(record.get("split", "unknown_split"))
+        sample_path = _materialized_sample_path(
+            materialized_root,
+            country=country,
+            split=split,
+            key=key,
+        )
         sample_path.parent.mkdir(parents=True, exist_ok=True)
         if sample_path.exists() and not force_rematerialize:
             skipped += 1
             continue
 
-        record = table.slice(row.latent_row_idx, 1).to_pylist()[0]
         payload = {
-            "key": row.key,
-            "country": row.country,
-            "split": row.split,
+            "key": key,
+            "country": country,
+            "split": split,
             "projected": _load_tensor_from_bytes(record["projected_bytes"]).float(),
-            "num_frames": int(row.num_frames if row.num_frames is not None else record["num_frames"]),
-            "transcription": row.transcription,
-            "timestamps": row.timestamps,
-            "latent_shard_path": row.latent_shard_path,
-            "latent_row_idx": row.latent_row_idx,
+            "num_frames": int(record["num_frames"]),
+            "latent_shard_path": latent_shard_path,
+            "latent_row_idx": int(row_idx),
         }
         if materialize_speaker_prefix:
-            payload["speaker_prefix_frames"] = int(
-                row.speaker_prefix_frames
-                if row.speaker_prefix_frames is not None
-                else record["speaker_prefix_frames"]
-            )
+            payload["speaker_prefix_frames"] = int(record["speaker_prefix_frames"])
             payload["speaker_prefix_prequant"] = _load_tensor_from_bytes(
                 record["speaker_prefix_prequant_bytes"]
             ).float()
@@ -270,44 +277,38 @@ def materialize_latent_dataset(
     country = str(dataset_cfg["country"])
     materialize_speaker_prefix = bool(dataset_cfg.get("materialize_speaker_prefix", True))
     materialization_num_workers = max(1, int(dataset_cfg.get("materialization_num_workers", 1)))
-    rows: list[PairedManifestRow] = []
+    available_splits = []
     for split in ("train", "validation", "test"):
-        try:
-            rows.extend(load_split_manifest_rows(manifest_root=manifest_root, country=country, split=split))
-        except FileNotFoundError:
-            continue
-
+        if resolve_manifest_path(manifest_root=manifest_root, country=country, split=split).exists():
+            available_splits.append(split)
     parquet_cache_dir = materialized_root / "_parquet_cache"
-    rows_by_shard: dict[str, list[PairedManifestRow]] = defaultdict(list)
-    for row in rows:
-        rows_by_shard[row.latent_shard_path].append(row)
-
-    shard_items = sorted(rows_by_shard.items(), key=lambda item: item[0])
-    total_samples = len(rows)
-    total_shards = len(shard_items)
-    print(
-        f"[MATERIALIZE] country={country} samples={total_samples} "
-        f"shards={total_shards} workers={materialization_num_workers}"
-    )
-    print("[MATERIALIZE] downloading latent parquet snapshot with huggingface_hub")
-    shard_map = _snapshot_latent_shards(
-        [shard_rel_path for shard_rel_path, _ in shard_items],
+    print("[MATERIALIZE] downloading country/split parquet snapshot with huggingface_hub")
+    shard_map = _snapshot_country_split_latents(
+        country=country,
+        splits=available_splits,
         dataset_cfg=dataset_cfg,
         parquet_cache_dir=parquet_cache_dir,
         dataset_root=dataset_root,
+    )
+
+    shard_items = [(shard_rel_path, shard_path) for shard_rel_path, shard_path in sorted(shard_map.items())]
+    total_shards = len(shard_map)
+    print(
+        f"[MATERIALIZE] country={country} parquet_files={total_shards} "
+        f"workers={materialization_num_workers}"
     )
 
     written = 0
     skipped = 0
     worker_jobs = [
         {
-            "shard_path": shard_map[shard_rel_path],
-            "rows": shard_rows,
+            "shard_path": shard_path,
+            "latent_shard_path": shard_rel_path,
             "materialized_root": materialized_root,
             "force_rematerialize": force_rematerialize,
             "materialize_speaker_prefix": materialize_speaker_prefix,
         }
-        for shard_rel_path, shard_rows in shard_items
+        for shard_rel_path, shard_path in shard_items
     ]
     if materialization_num_workers > 1:
         max_workers = min(materialization_num_workers, len(worker_jobs), max(1, os.cpu_count() or 1))
