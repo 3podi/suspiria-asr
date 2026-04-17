@@ -261,6 +261,11 @@ def _progress(iterable, *, total: int, desc: str):
     return tqdm(iterable, total=total, desc=desc, unit="file")
 
 
+def _materialized_country_has_samples(materialized_root: Path, *, country: str) -> bool:
+    country_root = materialized_root / country
+    return country_root.exists() and any(country_root.rglob("*.pt"))
+
+
 def materialize_latent_dataset(
     *,
     dataset_cfg: dict[str, Any],
@@ -268,13 +273,20 @@ def materialize_latent_dataset(
     force_rematerialize: bool = False,
     cleanup_parquet_after_materialize: bool = False,
 ) -> None:
+    country = str(dataset_cfg["country"])
+    if not force_rematerialize and _materialized_country_has_samples(materialized_root, country=country):
+        print(
+            f"[MATERIALIZE] using existing materialized latents under "
+            f"{materialized_root / country}; set dataset.force_rematerialize=true to rebuild."
+        )
+        return None
+
     dataset_root = None
     local_root = dataset_cfg.get("local_dataset_root")
     if not _is_empty_path(local_root):
         dataset_root = Path(str(local_root)).expanduser().resolve()
 
     manifest_root = resolve_manifest_root(dataset_cfg)
-    country = str(dataset_cfg["country"])
     materialize_speaker_prefix = bool(dataset_cfg.get("materialize_speaker_prefix", True))
     materialization_num_workers = max(1, int(dataset_cfg.get("materialization_num_workers", 1)))
     available_splits = []
