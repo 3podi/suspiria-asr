@@ -1,14 +1,14 @@
 dataset:
-  repo_id: null
+  repo_id: "3podi/eurospeech-latents-bf16"
   revision: null
   local_dataset_root: null
   manifest_glob: "manifests/*/*/paired_manifest.jsonl"
-  country: "france"
+  country: "italy"
   latents_path: ""
   materialized_latents_dir: "out/materialized_latents"
   force_rematerialize: false
   cleanup_parquet_after_materialize: false
-  materialize_speaker_prefix: true
+  materialize_speaker_prefix: false
   materialization_num_workers: 1
   step_ms: 80
   left_pad_steps: 32
