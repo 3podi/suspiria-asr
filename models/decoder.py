@@ -289,7 +289,7 @@ class DecoderLM(nn.Module):
         max_seq_len = int(batch["max_seq_len"].item())
 
         hidden_states = self.embed_tokens(input_ids) + self.audio_proj(audio_features)
-        time_condition = self._expand_time_condition(batch["delay_steps"], seq_lens)
+        time_condition = self._expand_time_condition(batch["delay_steps"], seq_lens).to(hidden_states.dtype)
 
         for layer in self.layers:
             hidden_states = layer(
