@@ -18,8 +18,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-name", default="output.pt", help="Scaling artifact filename.")
     parser.add_argument(
         "--budget-field",
-        choices=("tokens_seen", "target_tokens"),
-        default="tokens_seen",
+        choices=("best_val_tokens_seen", "tokens_seen", "target_tokens"),
+        default="best_val_tokens_seen",
         help="Token budget used for fitting. Grouping still uses target_tokens.",
     )
     return parser.parse_args()
@@ -43,6 +43,11 @@ def _payload_to_row(path: Path, payload: dict[str, Any], root: Path) -> dict[str
     cfg = payload.get("config", {})
     runtime_cfg = cfg.get("runtime", {})
     optimization_cfg = cfg.get("optimization", {})
+    best_val_tokens_seen = payload.get("best_val_tokens_seen")
+    flops_per_token = payload.get("flops_per_token")
+    best_val_compute_flops = None
+    if best_val_tokens_seen is not None and flops_per_token is not None:
+        best_val_compute_flops = int(best_val_tokens_seen) * int(flops_per_token)
     return {
         "path": str(path),
         "relative_path": str(path.relative_to(root)) if path.is_relative_to(root) else str(path),
@@ -59,6 +64,7 @@ def _payload_to_row(path: Path, payload: dict[str, Any], root: Path) -> dict[str
         "flops_per_token": payload.get("flops_per_token"),
         "declared_compute_flops": payload.get("declared_compute_flops"),
         "actual_execution_flops": payload.get("actual_execution_flops"),
+        "best_val_compute_flops": best_val_compute_flops,
         "best_train_loss": payload.get("best_train_loss"),
         "best_val_loss": payload.get("best_val_loss"),
         "best_val_step": payload.get("best_val_step"),
@@ -170,8 +176,7 @@ def _fit_surface(rows: list[dict[str, Any]], *, budget_field: str) -> dict[str, 
 
 
 def _fit_compute_trends(rows: list[dict[str, Any]], *, budget_field: str) -> dict[str, Any]:
-    compute_field = "actual_execution_flops" if budget_field == "tokens_seen" else "declared_compute_flops"
-    compute = np.asarray([_safe_float(row.get(compute_field)) or np.nan for row in rows], dtype=np.float64)
+    compute_field, compute = _compute_values(rows, budget_field=budget_field)
     lr = np.asarray([_safe_float(row.get("lr")) or np.nan for row in rows], dtype=np.float64)
     params = np.asarray([_safe_float(row.get("params_no_embed")) or np.nan for row in rows], dtype=np.float64)
     tokens = np.asarray([_safe_float(row.get(budget_field)) or np.nan for row in rows], dtype=np.float64)
@@ -192,8 +197,7 @@ def _maybe_write_plots(output_dir: Path, rows: list[dict[str, Any]], *, budget_f
     except Exception:
         return []
 
-    compute_field = "actual_execution_flops" if budget_field == "tokens_seen" else "declared_compute_flops"
-    compute = np.asarray([_safe_float(row.get(compute_field)) or np.nan for row in rows], dtype=np.float64)
+    compute_field, compute = _compute_values(rows, budget_field=budget_field)
     loss = np.asarray([_safe_float(row.get("best_val_loss")) or np.nan for row in rows], dtype=np.float64)
     lr = np.asarray([_safe_float(row.get("lr")) or np.nan for row in rows], dtype=np.float64)
     model_names = [str(row.get("model_name")) for row in rows]
@@ -234,6 +238,22 @@ def _maybe_write_plots(output_dir: Path, rows: list[dict[str, Any]], *, budget_f
         written.append(str(path))
 
     return written
+
+
+def _compute_values(rows: list[dict[str, Any]], *, budget_field: str) -> tuple[str, np.ndarray]:
+    if budget_field == "target_tokens":
+        return "declared_compute_flops", np.asarray(
+            [_safe_float(row.get("declared_compute_flops")) or np.nan for row in rows],
+            dtype=np.float64,
+        )
+    if budget_field == "tokens_seen":
+        return "actual_execution_flops", np.asarray(
+            [_safe_float(row.get("actual_execution_flops")) or np.nan for row in rows],
+            dtype=np.float64,
+        )
+    tokens = np.asarray([_safe_float(row.get("best_val_tokens_seen")) or np.nan for row in rows], dtype=np.float64)
+    flops_per_token = np.asarray([_safe_float(row.get("flops_per_token")) or np.nan for row in rows], dtype=np.float64)
+    return "best_val_compute_flops", tokens * flops_per_token
 
 
 def main() -> None:
