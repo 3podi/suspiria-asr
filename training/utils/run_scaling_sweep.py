@@ -61,6 +61,8 @@ def _build_command(
         sys.executable,
         "-m",
         "training.train",
+        "--config-name",
+        str(sweep_cfg.get("train_config_name", "scaling")),
         "scaling.enabled=true",
         f"scaling.model_name={model_name}",
         f"scaling.target_tokens={int(target_tokens)}",

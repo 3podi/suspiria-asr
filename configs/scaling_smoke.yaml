@@ -3,6 +3,7 @@ defaults:
   - _self_
 
 sweep:
+  train_config_name: "scaling_smoke"
   output_root: "out/scaling_smoke"
   enabled_models:
     - tiny

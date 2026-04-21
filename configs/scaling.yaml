@@ -3,6 +3,7 @@ defaults:
   - _self_
 
 sweep:
+  train_config_name: "scaling"
   output_root: "out/scaling"
   run_serial: false
   head_dim: 64
@@ -49,8 +50,14 @@ sweep:
   seeds:
     - 1337
 
+dataset:
+  splits:
+    - train
+    - validation
+
 scaling:
   enabled: true
+  avg_audio_seconds: 15.0
 
 optimization:
   max_steps: 100000000
@@ -62,6 +69,10 @@ evaluation:
 
 wer:
   enabled: false
+
+wandb:
+  tags:
+    - scaling-laws
 
 runtime:
   save_every_steps: 100000000

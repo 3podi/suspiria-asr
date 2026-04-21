@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hydra
+import math
 import time
 from pathlib import Path
 
@@ -87,6 +88,21 @@ def _resolve_requested_splits(dataset_cfg: dict[str, object]) -> set[str]:
     return requested
 
 
+def _estimate_scaling_total_steps(cfg: dict[str, object], target_tokens: int) -> int:
+    dataset_cfg = cfg["dataset"]
+    scaling_cfg = cfg.get("scaling", {})
+    avg_audio_seconds = float(scaling_cfg.get("avg_audio_seconds", 15.0))
+    step_ms = int(dataset_cfg.get("step_ms", 80))
+    left_pad_steps = int(dataset_cfg.get("left_pad_steps", 0))
+    delay_min_ms = int(dataset_cfg.get("delay_min_ms", 80))
+    delay_max_ms = int(dataset_cfg.get("delay_max_ms", delay_min_ms))
+    avg_delay_steps = ((delay_min_ms + delay_max_ms) / 2.0) / float(step_ms)
+    avg_real_steps = avg_audio_seconds * 1000.0 / float(step_ms)
+    avg_tokens_per_sample = max(1.0, avg_real_steps + left_pad_steps + avg_delay_steps)
+    tokens_per_step = max(1.0, avg_tokens_per_sample * int(cfg["optimization"].get("batch_size", 1)))
+    return max(1, int(math.ceil(float(target_tokens) / tokens_per_step)))
+
+
 @hydra.main(version_base=None, config_path="../configs", config_name="training")
 def main(cfg: DictConfig) -> None:
     cfg = to_plain_dict(cfg)
@@ -155,6 +171,8 @@ def main(cfg: DictConfig) -> None:
                 split="validation",
                 manifest_root=manifest_root,
             )
+    if scaling_enabled and val_loader is None:
+        raise ValueError("Scaling-law runs require an active validation split.")
     test_loader = None
     test_wer_loader = None
     if "test" in split_names:
@@ -191,12 +209,20 @@ def main(cfg: DictConfig) -> None:
         if missing or unexpected:
             print(f"[INIT] pretrained missing={missing} unexpected={unexpected}")
 
+    optimizer_train_cfg = dict(cfg["optimization"])
+    if scaling_enabled:
+        assert target_tokens_int is not None
+        optimizer_train_cfg["max_steps"] = _estimate_scaling_total_steps(cfg, target_tokens_int)
+        print(f"[SCALING] estimated_scheduler_steps={optimizer_train_cfg['max_steps']}")
+
     optimizer, scheduler = build_optimizer_and_scheduler(
         model,
         device=device,
-        train_cfg=cfg["optimization"],
+        train_cfg=optimizer_train_cfg,
     )
     ema = maybe_build_ema(model, cfg)
+    if scaling_enabled and not _is_missing(cfg["runtime"].get("checkpoint_path")):
+        raise ValueError("Scaling-law runs do not support runtime.checkpoint_path resume.")
     start_step, _, _ = maybe_resume_training_state(
         model=model,
         ema=ema,
