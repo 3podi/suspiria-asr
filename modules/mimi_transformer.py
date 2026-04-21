@@ -9,7 +9,6 @@ from modules.layer_scale import LayerScale
 from modules.rope import RotaryEmbedding
 from modules.stateful_module import StatefulModule
 from modules.transformer import StreamingMultiheadAttention
-from utils.config import FlowLMTransformerConfig
 
 
 class MimiStreamingMultiheadAttention(nn.Module):
@@ -144,7 +143,7 @@ class StreamingTransformer(nn.Module):
             )
 
     @classmethod
-    def from_pydantic_config(cls, config: FlowLMTransformerConfig) -> Self:
+    def from_pydantic_config(cls, config) -> Self:
         dim_feedforward = int(config.d_model * config.hidden_scale)
         return cls(
             d_model=config.d_model,
