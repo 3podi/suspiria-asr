@@ -1,0 +1,68 @@
+defaults:
+  - training
+  - _self_
+
+sweep:
+  output_root: "out/scaling"
+  run_serial: false
+  head_dim: 64
+  heads_per_kv_head: 4
+  models:
+    tiny:
+      hidden_size: 256
+      num_layers: 6
+      num_heads: 4
+      num_kv_heads: 1
+      ffw_hidden_size: 1024
+    small:
+      hidden_size: 512
+      num_layers: 8
+      num_heads: 8
+      num_kv_heads: 2
+      ffw_hidden_size: 2048
+    base:
+      hidden_size: 768
+      num_layers: 10
+      num_heads: 12
+      num_kv_heads: 3
+      ffw_hidden_size: 3072
+    current:
+      hidden_size: 1024
+      num_layers: 12
+      num_heads: 16
+      num_kv_heads: 4
+      ffw_hidden_size: 4096
+  enabled_models:
+    - tiny
+    - small
+    - base
+  target_tokens:
+    - 100000
+    - 300000
+    - 1000000
+    - 3000000
+    - 10000000
+  learning_rates:
+    - 0.0001
+    - 0.0003
+    - 0.001
+  seeds:
+    - 1337
+
+scaling:
+  enabled: true
+
+optimization:
+  max_steps: 100000000
+
+evaluation:
+  validation_every_steps: 100
+  max_eval_batches: 16
+  compute_train_metrics: false
+
+wer:
+  enabled: false
+
+runtime:
+  save_every_steps: 100000000
+  test_only: false

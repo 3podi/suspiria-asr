@@ -1,0 +1,18 @@
+defaults:
+  - scaling
+  - _self_
+
+sweep:
+  output_root: "out/scaling_smoke"
+  enabled_models:
+    - tiny
+  target_tokens:
+    - 1000
+    - 3000
+  learning_rates:
+    - 0.0003
+  seeds:
+    - 1337
+
+evaluation:
+  max_eval_batches: 2

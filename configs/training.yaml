@@ -4,6 +4,10 @@ dataset:
   local_dataset_root: null
   manifest_glob: "manifests/*/*/paired_manifest.jsonl"
   country: "italy"
+  splits:
+    - train
+    - validation
+    #- test
   latents_path: ""
   materialized_latents_dir: "out/materialized_latents"
   force_rematerialize: false
@@ -63,6 +67,13 @@ loss:
   eos_factor: 1.0
   pad_wait_factor: 1.0
   word_start_factor: 1.0
+
+scaling:
+  enabled: false
+  model_name: null
+  target_tokens: null
+  output_name: "output.pt"
+  flops_context_tokens: null
 
 ema:
   enabled: false
