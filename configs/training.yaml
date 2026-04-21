@@ -10,6 +10,7 @@ dataset:
   cleanup_parquet_after_materialize: false
   materialize_speaker_prefix: false
   materialization_num_workers: 1
+  materialization_batch_size: 128
   step_ms: 80
   left_pad_steps: 32
   delay_min_ms: 80

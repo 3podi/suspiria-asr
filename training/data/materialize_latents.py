@@ -237,42 +237,64 @@ def _materialize_shard_rows(
     force_rematerialize: bool,
     materialize_speaker_prefix: bool,
     tensor_dtype: torch.dtype,
+    materialization_batch_size: int,
 ) -> tuple[int, int]:
-    table = pq.read_table(shard_path)
+    columns = [
+        "key",
+        "country",
+        "split",
+        "projected_bytes",
+        "num_frames",
+    ]
+    if materialize_speaker_prefix:
+        columns.extend(
+            [
+                "speaker_prefix_frames",
+                "speaker_prefix_prequant_bytes",
+            ]
+        )
+
+    parquet_file = pq.ParquetFile(shard_path)
     written = 0
     skipped = 0
+    global_row_idx = 0
 
-    for row_idx, record in enumerate(table.to_pylist()):
-        key = str(record["key"])
-        country = str(record.get("country", "unknown_country"))
-        split = str(record.get("split", "unknown_split"))
-        sample_path = _materialized_sample_path(
-            materialized_root,
-            country=country,
-            split=split,
-            key=key,
-        )
-        sample_path.parent.mkdir(parents=True, exist_ok=True)
-        if sample_path.exists() and not force_rematerialize:
-            skipped += 1
-            continue
+    for batch in parquet_file.iter_batches(batch_size=max(1, int(materialization_batch_size)), columns=columns):
+        rows = batch.to_pydict()
+        num_rows = int(batch.num_rows)
+        for local_row_idx in range(num_rows):
+            row_idx = global_row_idx + local_row_idx
+            key = str(rows["key"][local_row_idx])
+            country = str(rows.get("country", ["unknown_country"] * num_rows)[local_row_idx])
+            split = str(rows.get("split", ["unknown_split"] * num_rows)[local_row_idx])
+            sample_path = _materialized_sample_path(
+                materialized_root,
+                country=country,
+                split=split,
+                key=key,
+            )
+            sample_path.parent.mkdir(parents=True, exist_ok=True)
+            if sample_path.exists() and not force_rematerialize:
+                skipped += 1
+                continue
 
-        payload = {
-            "key": key,
-            "country": country,
-            "split": split,
-            "projected": _load_tensor_from_bytes(record["projected_bytes"]).to(dtype=tensor_dtype),
-            "num_frames": int(record["num_frames"]),
-            "latent_shard_path": latent_shard_path,
-            "latent_row_idx": int(row_idx),
-        }
-        if materialize_speaker_prefix:
-            payload["speaker_prefix_frames"] = int(record["speaker_prefix_frames"])
-            payload["speaker_prefix_prequant"] = _load_tensor_from_bytes(
-                record["speaker_prefix_prequant_bytes"]
-            ).to(dtype=tensor_dtype)
-        torch.save(payload, sample_path)
-        written += 1
+            payload = {
+                "key": key,
+                "country": country,
+                "split": split,
+                "projected": _load_tensor_from_bytes(rows["projected_bytes"][local_row_idx]).to(dtype=tensor_dtype),
+                "num_frames": int(rows["num_frames"][local_row_idx]),
+                "latent_shard_path": latent_shard_path,
+                "latent_row_idx": int(row_idx),
+            }
+            if materialize_speaker_prefix:
+                payload["speaker_prefix_frames"] = int(rows["speaker_prefix_frames"][local_row_idx])
+                payload["speaker_prefix_prequant"] = _load_tensor_from_bytes(
+                    rows["speaker_prefix_prequant_bytes"][local_row_idx]
+                ).to(dtype=tensor_dtype)
+            torch.save(payload, sample_path)
+            written += 1
+        global_row_idx += num_rows
 
     return written, skipped
 
@@ -316,6 +338,7 @@ def materialize_latent_dataset(
         default=torch.bfloat16,
     )
     materialization_num_workers = max(1, int(dataset_cfg.get("materialization_num_workers", 1)))
+    materialization_batch_size = max(1, int(dataset_cfg.get("materialization_batch_size", 128)))
     available_splits = []
     for split in ("train", "validation", "test"):
         if resolve_manifest_path(manifest_root=manifest_root, country=country, split=split).exists():
@@ -334,7 +357,8 @@ def materialize_latent_dataset(
     total_shards = len(shard_map)
     print(
         f"[MATERIALIZE] country={country} parquet_files={total_shards} "
-        f"workers={materialization_num_workers} tensor_dtype={resolved_tensor_dtype}"
+        f"workers={materialization_num_workers} batch_size={materialization_batch_size} "
+        f"tensor_dtype={resolved_tensor_dtype}"
     )
 
     written = 0
@@ -347,6 +371,7 @@ def materialize_latent_dataset(
             "force_rematerialize": force_rematerialize,
             "materialize_speaker_prefix": materialize_speaker_prefix,
             "tensor_dtype": resolved_tensor_dtype,
+            "materialization_batch_size": materialization_batch_size,
         }
         for shard_rel_path, shard_path in shard_items
     ]
