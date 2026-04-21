@@ -63,6 +63,7 @@ def _payload_to_row(path: Path, payload: dict[str, Any], root: Path) -> dict[str
         "best_val_loss": payload.get("best_val_loss"),
         "best_val_step": payload.get("best_val_step"),
         "best_val_tokens_seen": payload.get("best_val_tokens_seen"),
+        "estimated_scheduler_max_steps": payload.get("estimated_scheduler_max_steps"),
         "step": payload.get("step"),
     }
 

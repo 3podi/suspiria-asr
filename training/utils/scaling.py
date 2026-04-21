@@ -83,6 +83,7 @@ def build_scaling_payload(
     best_val_loss: float | None,
     best_val_step: int | None,
     best_val_tokens_seen: int | None,
+    estimated_scheduler_max_steps: int | None,
     best_val_metrics: dict[str, float] | None,
     final_val_metrics: dict[str, float] | None,
     final_test_metrics: dict[str, float] | None,
@@ -114,6 +115,9 @@ def build_scaling_payload(
         "best_val_loss": _finite_float_or_none(best_val_loss),
         "best_val_step": None if best_val_step is None else int(best_val_step),
         "best_val_tokens_seen": None if best_val_tokens_seen is None else int(best_val_tokens_seen),
+        "estimated_scheduler_max_steps": None
+        if estimated_scheduler_max_steps is None
+        else int(estimated_scheduler_max_steps),
         "best_val_metrics": best_val_metrics,
         "final_val_metrics": final_val_metrics,
         "final_test_metrics": final_test_metrics,

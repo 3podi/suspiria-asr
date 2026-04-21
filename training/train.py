@@ -210,10 +210,12 @@ def main(cfg: DictConfig) -> None:
             print(f"[INIT] pretrained missing={missing} unexpected={unexpected}")
 
     optimizer_train_cfg = dict(cfg["optimization"])
+    estimated_scheduler_max_steps = None
     if scaling_enabled:
         assert target_tokens_int is not None
-        optimizer_train_cfg["max_steps"] = _estimate_scaling_total_steps(cfg, target_tokens_int)
-        print(f"[SCALING] estimated_scheduler_steps={optimizer_train_cfg['max_steps']}")
+        estimated_scheduler_max_steps = _estimate_scaling_total_steps(cfg, target_tokens_int)
+        optimizer_train_cfg["max_steps"] = estimated_scheduler_max_steps
+        print(f"[SCALING] estimated_scheduler_max_steps={estimated_scheduler_max_steps}")
 
     optimizer, scheduler = build_optimizer_and_scheduler(
         model,
@@ -543,6 +545,7 @@ def main(cfg: DictConfig) -> None:
             best_val_loss=None if best_val_loss == float("inf") else best_val_loss,
             best_val_step=best_val_step,
             best_val_tokens_seen=best_val_tokens_seen,
+            estimated_scheduler_max_steps=estimated_scheduler_max_steps,
             best_val_metrics=best_val_metrics,
             final_val_metrics=final_val_metrics,
             final_test_metrics=final_test_metrics,
