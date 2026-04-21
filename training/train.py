@@ -264,7 +264,7 @@ def main(cfg: DictConfig) -> None:
                 ema.update(model)
 
             step += 1
-            log_window_tokens += int((batch["packed_labels"] != -100).sum().item())
+            log_window_tokens += int(batch["packed_labels"].numel())
             log_window_samples += int(batch["seq_lens"].shape[0])
             if compute_train_metrics:
                 batch_counts = compute_batch_metric_counts(
