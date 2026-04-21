@@ -55,9 +55,8 @@ def _build_masks(
     pred_ids: torch.Tensor,
     *,
     special_tokens: SpecialTokenIds,
-    ignore_index: int = -100,
 ) -> dict[str, torch.Tensor]:
-    valid_mask = labels != ignore_index
+    valid_mask = torch.ones_like(labels, dtype=torch.bool)
     pad_mask = valid_mask & (labels == special_tokens.pad_wait)
     word_start_mask = valid_mask & (labels == special_tokens.word_start)
     bos_mask = valid_mask & (labels == special_tokens.bos)
@@ -96,11 +95,10 @@ def compute_batch_metric_counts(
     special_tokens: SpecialTokenIds,
     loss_value: float,
     unweighted_loss_value: float | None = None,
-    ignore_index: int = -100,
 ) -> MetricCounts:
     pred_ids = logits.argmax(dim=-1)
     top5_ids = torch.topk(logits, k=min(5, logits.shape[-1]), dim=-1).indices
-    masks = _build_masks(labels, pred_ids, special_tokens=special_tokens, ignore_index=ignore_index)
+    masks = _build_masks(labels, pred_ids, special_tokens=special_tokens)
     valid_mask = masks["valid"]
     correct = (pred_ids == labels) & valid_mask
     top5_correct = (top5_ids == labels.unsqueeze(-1)).any(dim=-1) & valid_mask
