@@ -1,0 +1,9 @@
+model:
+  hidden_size: 768
+  num_layers: 10
+  num_heads: 12
+  num_kv_heads: 3
+  ffw_hidden_size: 3072
+
+scaling:
+  model_name: base

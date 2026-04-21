@@ -1,0 +1,9 @@
+model:
+  hidden_size: 512
+  num_layers: 8
+  num_heads: 8
+  num_kv_heads: 2
+  ffw_hidden_size: 2048
+
+scaling:
+  model_name: small

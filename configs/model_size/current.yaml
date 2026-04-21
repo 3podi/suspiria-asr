@@ -1,0 +1,9 @@
+model:
+  hidden_size: 1024
+  num_layers: 12
+  num_heads: 16
+  num_kv_heads: 4
+  ffw_hidden_size: 4096
+
+scaling:
+  model_name: current

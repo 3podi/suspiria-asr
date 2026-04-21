@@ -1,19 +1,17 @@
 defaults:
   - scaling
+  - override model_size: tiny
   - _self_
 
-sweep:
-  train_config_name: "scaling_smoke"
-  output_root: "out/scaling_smoke"
-  enabled_models:
-    - tiny
-  target_tokens:
-    - 1000
-    - 3000
-  learning_rates:
-    - 0.0003
-  seeds:
-    - 1337
+scaling:
+  target_tokens: 1000
+
+optimization:
+  lr: 0.0003
 
 evaluation:
   max_eval_batches: 2
+
+hydra:
+  sweep:
+    dir: out/scaling_smoke

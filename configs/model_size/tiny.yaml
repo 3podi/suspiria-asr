@@ -1,0 +1,9 @@
+model:
+  hidden_size: 256
+  num_layers: 6
+  num_heads: 4
+  num_kv_heads: 1
+  ffw_hidden_size: 1024
+
+scaling:
+  model_name: tiny
