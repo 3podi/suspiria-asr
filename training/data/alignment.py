@@ -136,16 +136,9 @@ def build_delayed_target_stream(
         if token_id == int(eos_token_id):
             break
 
-    target_tensor = torch.tensor(targets, dtype=torch.long)
-    input_ids = torch.empty_like(target_tensor)
-    input_ids[0] = int(bos_token_id)
-    if target_tensor.numel() > 1:
-        input_ids[1:] = target_tensor[:-1]
-
     return AlignedSample(
         key=key,
-        input_ids=input_ids,
-        labels=target_tensor,
+        token_ids=torch.tensor(targets, dtype=torch.long),
         audio_features=torch.stack(audio_steps, dim=0),
         delay_steps=int(delay_steps),
     )

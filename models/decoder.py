@@ -227,14 +227,8 @@ class DecoderLM(nn.Module):
         per_token_loss = F.cross_entropy(
             logits,
             labels,
-            ignore_index=-100,
             reduction="none",
         )
-        valid_mask = labels != -100
-        if not valid_mask.any():
-            zero = per_token_loss.sum()
-            return zero, zero
-
         weights = torch.ones_like(per_token_loss)
         if self.config.loss_bos_factor != 1.0:
             weights = torch.where(
@@ -261,14 +255,11 @@ class DecoderLM(nn.Module):
                 weights,
             )
 
-        valid_mask_f = valid_mask.to(per_token_loss.dtype)
-        weighted_loss = per_token_loss * weights * valid_mask_f
-        unweighted_loss = per_token_loss * valid_mask_f
-        normalizer = (weights * valid_mask_f).sum()
-        unweighted_normalizer = valid_mask_f.sum()
+        weighted_loss = per_token_loss * weights
+        normalizer = weights.sum()
         return (
             weighted_loss.sum() / normalizer,
-            unweighted_loss.sum() / unweighted_normalizer,
+            per_token_loss.mean(),
         )
 
     def _compute_time_embedding(self, delay_steps: torch.Tensor) -> torch.Tensor:
