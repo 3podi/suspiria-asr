@@ -79,6 +79,9 @@ wer:
   max_batches: 4
   # Can be a single value, e.g. 2400, or a list, e.g. [80, 800, 2400].
   delay_ms: 2400
+  # If flush_steps is null, WER generation uses delay_steps + extra_flush_steps.
+  # The extra budget lets delayed final text tokens and EOS flush after the delay.
+  extra_flush_steps: 128
   flush_steps: null
   max_decode_steps: null
   remove_diacritics: false
