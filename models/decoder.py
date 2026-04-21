@@ -58,22 +58,25 @@ class VarLenSelfAttention(nn.Module):
         self.o_proj = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
         self.rope_theta = float(config.rope_theta)
         self.attention_window = int(config.attention_window)
+        if self.num_heads % self.num_kv_heads != 0:
+            raise ValueError(
+                f"num_heads must be divisible by num_kv_heads for GQA, got "
+                f"num_heads={self.num_heads} num_kv_heads={self.num_kv_heads}."
+            )
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         *,
-        seq_lens: torch.Tensor,
         position_ids: torch.Tensor,
         cu_seqlens: torch.Tensor,
+        max_seq_len: int,
     ) -> torch.Tensor:
         if varlen_attn is None:
             raise ImportError(
                 "PyTorch varlen attention is unavailable. Install a PyTorch build exposing "
                 "`torch.nn.attention.varlen.varlen_attn`."
             )
-
-        max_len = int(seq_lens.max().item())
 
         q = self.q_proj(hidden_states).view(-1, self.num_heads, self.head_dim)
         k = self.k_proj(hidden_states).view(-1, self.num_kv_heads, self.head_dim)
@@ -84,11 +87,6 @@ class VarLenSelfAttention(nn.Module):
         q = _apply_rope(q, position_ids, self.rope_theta)
         k = _apply_rope(k, position_ids, self.rope_theta)
 
-        if self.num_kv_heads != self.num_heads:
-            repeat_factor = self.num_heads // self.num_kv_heads
-            k = k.repeat_interleave(repeat_factor, dim=1).contiguous()
-            v = v.repeat_interleave(repeat_factor, dim=1).contiguous()
-
         window_size = (-1, 0) if self.attention_window <= 0 else (self.attention_window, 0)
         attn_out = varlen_attn(
             q,
@@ -96,9 +94,10 @@ class VarLenSelfAttention(nn.Module):
             v,
             cu_seqlens,
             cu_seqlens,
-            max_len,
-            max_len,
+            max_seq_len,
+            max_seq_len,
             window_size=window_size,
+            enable_gqa=self.num_kv_heads != self.num_heads,
         )
         attn_out = attn_out.reshape(-1, self.hidden_size)
         return self.o_proj(attn_out)
@@ -129,21 +128,15 @@ class VarLenSelfAttention(nn.Module):
             k_cache = k_cache[:, -self.attention_window :].contiguous()
             v_cache = v_cache[:, -self.attention_window :].contiguous()
 
-        attn_k = k_cache
-        attn_v = v_cache
-        if self.num_kv_heads != self.num_heads:
-            repeat_factor = self.num_heads // self.num_kv_heads
-            attn_k = attn_k.repeat_interleave(repeat_factor, dim=2)
-            attn_v = attn_v.repeat_interleave(repeat_factor, dim=2)
-
         q = q.unsqueeze(2)
-        attn_k = attn_k.transpose(1, 2)
-        attn_v = attn_v.transpose(1, 2)
+        attn_k = k_cache.transpose(1, 2)
+        attn_v = v_cache.transpose(1, 2)
         attn_out = F.scaled_dot_product_attention(
             q,
             attn_k,
             attn_v,
             is_causal=False,
+            enable_gqa=self.num_kv_heads != self.num_heads,
         )
         attn_out = attn_out.transpose(1, 2).reshape(batch_size, self.hidden_size)
         return self.o_proj(attn_out), {"key": k_cache, "value": v_cache}
@@ -165,17 +158,17 @@ class DecoderLayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         *,
-        seq_lens: torch.Tensor,
         position_ids: torch.Tensor,
         cu_seqlens: torch.Tensor,
+        max_seq_len: int,
         time_condition: torch.Tensor,
     ) -> torch.Tensor:
         attn_input = self.attn_norm(hidden_states)
         hidden_states = hidden_states + self.self_attn(
             attn_input,
-            seq_lens=seq_lens,
             position_ids=position_ids,
             cu_seqlens=cu_seqlens,
+            max_seq_len=max_seq_len,
         )
 
         ffn_input = self.ffn_norm(hidden_states)
@@ -286,6 +279,7 @@ class DecoderLM(nn.Module):
         seq_lens = batch["seq_lens"]
         packed_position_ids = batch["packed_position_ids"]
         cu_seqlens = batch["cu_seqlens"]
+        max_seq_len = int(batch["max_seq_len"].item())
 
         hidden_states = self.embed_tokens(input_ids) + self.audio_proj(audio_features)
         time_condition = self._expand_time_condition(batch["delay_steps"], seq_lens)
@@ -293,9 +287,9 @@ class DecoderLM(nn.Module):
         for layer in self.layers:
             hidden_states = layer(
                 hidden_states,
-                seq_lens=seq_lens,
                 position_ids=packed_position_ids,
                 cu_seqlens=cu_seqlens,
+                max_seq_len=max_seq_len,
                 time_condition=time_condition,
             )
 

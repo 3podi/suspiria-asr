@@ -64,9 +64,7 @@ class PackedLatentCollator:
                 )
             )
 
-        seq_lens = torch.tensor([item.token_ids.numel() - 1 for item in aligned], dtype=torch.long)
-        delay_steps = torch.tensor([item.delay_steps for item in aligned], dtype=torch.long)
-
+        seq_lens = []
         packed_input_ids = []
         packed_labels = []
         packed_audio_features = []
@@ -89,11 +87,13 @@ class PackedLatentCollator:
             packed_audio_features.append(audio_features.to(dtype=self.feature_dtype))
             # RoPE positions restart at each packed sequence boundary.
             packed_position_ids.append(torch.arange(length, dtype=torch.long))
+            seq_lens.append(length)
             cu_seqlens.append(cu_seqlens[-1] + length)
 
         return {
-            "seq_lens": seq_lens,
-            "delay_steps": delay_steps,
+            "seq_lens": torch.tensor(seq_lens, dtype=torch.long),
+            "max_seq_len": torch.tensor(max(seq_lens), dtype=torch.long),
+            "delay_steps": torch.tensor([item.delay_steps for item in aligned], dtype=torch.long),
             "packed_input_ids": torch.cat(packed_input_ids, dim=0),
             "packed_labels": torch.cat(packed_labels, dim=0),
             "packed_audio_features": torch.cat(packed_audio_features, dim=0),
