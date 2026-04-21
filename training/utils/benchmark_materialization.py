@@ -25,6 +25,9 @@ from training.data.materialize_latents import (
     load_split_manifest_rows,
     resolve_manifest_root,
 )
+from training.utils.logging import silence_external_info_logs
+
+silence_external_info_logs()
 
 try:
     from tqdm.auto import tqdm

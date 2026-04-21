@@ -12,6 +12,9 @@ import torch
 from huggingface_hub import snapshot_download
 
 from training.data.types import PairedManifestRow
+from training.utils.logging import silence_external_info_logs
+
+silence_external_info_logs()
 
 try:
     from tqdm.auto import tqdm
