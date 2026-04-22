@@ -84,26 +84,25 @@ def decode_generated_tokens(
     tokenizer,
     special_tokens: SpecialTokenIds,
 ) -> str:
-    chunks: list[str] = []
-    current: list[int] = []
-
-    def flush_current() -> None:
-        if current:
-            chunks.append(tokenizer.decode(current, skip_special_tokens=True))
-            current.clear()
-
+    text_token_ids: list[int] = []
+    special_ids = {
+        int(special_tokens.bos),
+        int(special_tokens.eos),
+        int(special_tokens.pad_wait),
+        int(special_tokens.word_start),
+    }
     for token_id in token_ids:
         token_id = int(token_id)
         if token_id == special_tokens.eos:
             break
-        if token_id in (special_tokens.bos, special_tokens.pad_wait):
+        if token_id in special_ids:
             continue
-        if token_id == special_tokens.word_start:
-            flush_current()
-            continue
-        current.append(token_id)
-    flush_current()
-    return re.sub(r"\s+", " ", " ".join(piece.strip() for piece in chunks if piece.strip())).strip()
+        text_token_ids.append(token_id)
+    return re.sub(
+        r"\s+",
+        " ",
+        tokenizer.decode(text_token_ids, skip_special_tokens=True),
+    ).strip()
 
 
 def _sample_audio_at_step(

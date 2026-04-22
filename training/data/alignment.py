@@ -28,11 +28,11 @@ def _build_groups_from_timestamps(
     delay_steps: int,
     left_pad_steps: int,
     fallback_real_steps: int,
-) -> list[tuple[int, list[int]]]:
+) -> list[tuple[int, str]]:
     if not timestamps:
         emission_step = left_pad_steps + max(0, fallback_real_steps - 1) + delay_steps
-        token_ids = tokenizer.encode(transcript, add_special_tokens=False)
-        return [(emission_step, token_ids)] if token_ids else []
+        text = _normalize_timestamp_text(transcript)
+        return [(emission_step, text)] if text else []
 
     grouped_words: "OrderedDict[int, list[str]]" = OrderedDict()
     for item in timestamps:
@@ -47,12 +47,11 @@ def _build_groups_from_timestamps(
         )
         grouped_words.setdefault(emission_step, []).append(text)
 
-    groups: list[tuple[int, list[int]]] = []
+    groups: list[tuple[int, str]] = []
     for emission_step, words in grouped_words.items():
         joined = " ".join(words)
-        token_ids = tokenizer.encode(joined, add_special_tokens=False)
-        if token_ids:
-            groups.append((emission_step, token_ids))
+        if joined:
+            groups.append((emission_step, joined))
     return groups
 
 
@@ -89,9 +88,14 @@ def build_delayed_target_stream(
     group_idx = 0
     time_step = 0
     in_text_island = False
+    has_emitted_text = False
     min_eos_step = left_pad_steps + real_steps
     latest_group_step = max((step for step, _ in groups), default=0)
-    total_group_tokens = sum(1 + len(ids) for _, ids in groups)
+    total_group_tokens = 0
+    for group_offset, (_, text) in enumerate(groups):
+        text_for_tokenizer = text if group_offset == 0 else f" {text}"
+        token_ids = tokenizer.encode(text_for_tokenizer, add_special_tokens=False)
+        total_group_tokens += 1 + len(token_ids)
     max_steps = max(min_eos_step, latest_group_step) + total_group_tokens + 1
 
     def latent_for_step(step_idx: int) -> torch.Tensor:
@@ -115,15 +119,25 @@ def build_delayed_target_stream(
         elif group_idx < len(groups) and groups[group_idx][0] <= time_step:
             group_tokens: list[int] = []
             while group_idx < len(groups) and groups[group_idx][0] <= time_step:
-                group_tokens.extend(int(tok) for tok in groups[group_idx][1])
+                group_text = groups[group_idx][1]
+                if has_emitted_text:
+                    group_text = f" {group_text}"
+                token_ids = tokenizer.encode(group_text, add_special_tokens=False)
+                group_tokens.extend(int(tok) for tok in token_ids)
+                if token_ids:
+                    has_emitted_text = True
                 group_idx += 1
-            if in_text_island:
+            if not group_tokens:
+                token_id = int(pad_wait_token_id)
+                in_text_island = False
+            elif in_text_island:
                 token_id = group_tokens[0]
                 pending_tokens = group_tokens[1:]
+                in_text_island = True
             else:
                 token_id = int(word_start_token_id)
                 pending_tokens = group_tokens
-            in_text_island = True
+                in_text_island = True
         elif group_idx >= len(groups) and time_step >= min_eos_step:
             token_id = int(eos_token_id)
             in_text_island = False
