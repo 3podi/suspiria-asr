@@ -97,6 +97,7 @@ wer:
   flush_steps: null
   max_decode_steps: null
   remove_diacritics: false
+  cer_ignore_spaces: true
 
 wandb:
   enabled: true

@@ -13,7 +13,7 @@ from training.utils.metrics import (
     finalize_metric_counts,
     merge_metric_counts,
 )
-from training.utils.wer import WERNormalizer, compute_wer, generate_batch_greedy, wer_stats
+from training.utils.wer import WERNormalizer, cer_stats, compute_wer, generate_batch_greedy, wer_stats
 
 @torch.no_grad()
 def evaluate_loss(
@@ -112,6 +112,7 @@ def evaluate_wer(
     assert data_dtype is not None
 
     normalizer = WERNormalizer(remove_diacritics=bool(wer_cfg.get("remove_diacritics", False)))
+    cer_ignore_spaces = bool(wer_cfg.get("cer_ignore_spaces", True))
     metrics: dict[str, float] = {}
     flush_steps_cfg = wer_cfg.get("flush_steps")
     extra_flush_steps = int(wer_cfg.get("extra_flush_steps", 128))
@@ -121,6 +122,8 @@ def evaluate_wer(
         flush_steps = delay_steps + extra_flush_steps if flush_steps_cfg in (None, "null") else int(flush_steps_cfg)
         total_errors = 0
         total_ref_words = 0
+        total_char_errors = 0
+        total_ref_chars = 0
         total_samples = 0
 
         for batch_idx, samples in enumerate(dataloader):
@@ -146,20 +149,34 @@ def evaluate_wer(
                 )
                 total_errors += int(errors)
                 total_ref_words += int(ref_words)
+                char_errors, ref_chars = cer_stats(
+                    str(sample["transcription"]),
+                    hypothesis,
+                    normalizer,
+                    ignore_spaces=cer_ignore_spaces,
+                )
+                total_char_errors += int(char_errors)
+                total_ref_chars += int(ref_chars)
                 total_samples += 1
 
         suffix = f"delay_{delay_idx}_{int(delay_ms)}ms"
         metrics[f"wer/{suffix}"] = compute_wer(total_errors, total_ref_words)
+        metrics[f"cer/{suffix}"] = compute_wer(total_char_errors, total_ref_chars)
         metrics[f"wer_errors/{suffix}"] = float(total_errors)
         metrics[f"wer_ref_words/{suffix}"] = float(total_ref_words)
+        metrics[f"cer_errors/{suffix}"] = float(total_char_errors)
+        metrics[f"cer_ref_chars/{suffix}"] = float(total_ref_chars)
         metrics[f"wer_num_samples/{suffix}"] = float(total_samples)
         metrics[f"wer_flush_steps/{suffix}"] = float(flush_steps)
 
     if len(delays_ms) == 1:
         suffix = f"delay_0_{int(delays_ms[0])}ms"
         metrics["wer"] = metrics[f"wer/{suffix}"]
+        metrics["cer"] = metrics[f"cer/{suffix}"]
         metrics["wer_errors"] = metrics[f"wer_errors/{suffix}"]
         metrics["wer_ref_words"] = metrics[f"wer_ref_words/{suffix}"]
+        metrics["cer_errors"] = metrics[f"cer_errors/{suffix}"]
+        metrics["cer_ref_chars"] = metrics[f"cer_ref_chars/{suffix}"]
         metrics["wer_num_samples"] = metrics[f"wer_num_samples/{suffix}"]
         metrics["wer_flush_steps"] = metrics[f"wer_flush_steps/{suffix}"]
 
