@@ -24,8 +24,6 @@ class MetricCounts:
     pad_correct_count: int = 0
     text_count: int = 0
     text_correct_count: int = 0
-    bos_count: int = 0
-    bos_correct_count: int = 0
     eos_count: int = 0
     eos_correct_count: int = 0
     word_start_count: int = 0
@@ -61,7 +59,6 @@ def _build_masks(
     valid_mask = torch.ones_like(labels, dtype=torch.bool)
     pad_mask = valid_mask & (labels == special_tokens.pad_wait)
     word_start_mask = valid_mask & (labels == special_tokens.word_start)
-    bos_mask = valid_mask & (labels == special_tokens.bos)
     eos_mask = valid_mask & (labels == special_tokens.eos)
 
     special_label_mask = (
@@ -82,7 +79,6 @@ def _build_masks(
         "valid": valid_mask,
         "pad": pad_mask,
         "word_start": word_start_mask,
-        "bos": bos_mask,
         "eos": eos_mask,
         "text": text_mask,
         "pred_text": pred_text_mask,
@@ -145,8 +141,6 @@ def compute_batch_metric_counts(
         pad_correct_count=int((correct & masks["pad"]).sum().item()),
         text_count=int(masks["text"].sum().item()),
         text_correct_count=int((correct & masks["text"]).sum().item()),
-        bos_count=int(masks["bos"].sum().item()),
-        bos_correct_count=int((correct & masks["bos"]).sum().item()),
         eos_count=int(masks["eos"].sum().item()),
         eos_correct_count=int((correct & masks["eos"]).sum().item()),
         word_start_count=int(masks["word_start"].sum().item()),
@@ -190,7 +184,6 @@ def finalize_metric_counts(counts: MetricCounts) -> dict[str, float]:
         "overall/non_pad_accuracy": _safe_div(counts.non_pad_correct_count, counts.non_pad_count),
         "overall/pad_accuracy": _safe_div(counts.pad_correct_count, counts.pad_count),
         "overall/text_token_accuracy": _safe_div(counts.text_correct_count, counts.text_count),
-        "control/bos_accuracy": _safe_div(counts.bos_correct_count, counts.bos_count),
         "control/eos_accuracy": _safe_div(counts.eos_correct_count, counts.eos_count),
         "control/word_start_accuracy": _safe_div(counts.word_start_correct_count, counts.word_start_count),
         "emit_text/precision": emit_precision,
