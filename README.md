@@ -18,6 +18,10 @@ The model is composed of a frozen Mimi variational audio encoder used without RV
 
 The model architecture is compatible with streaming inference. In practice, however, robust streaming operation requires training on audio sequences longer than the decoder context window, so that the model learns to operate with truncated historical context. Since the current dataset consists of shorter utterances, approximately 30-second clips, the provided inference workflow is currently intended for offline transcription of fixed-length audio segments.
 
+Collected datasets and released models are available in the Hugging Face collection below.
+
+[![Hugging Face Collection](https://img.shields.io/badge/Hugging%20Face-Collection-yellow)](https://huggingface.co/collections/3podi/suspiria-asr)
+
 ## Available Models
 
 | Language | Parameters | WER | Hugging Face | Weights & Biases |
