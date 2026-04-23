@@ -33,18 +33,36 @@ Collected datasets and released models are available in the Hugging Face collect
 To run the trained ASR stack on the sample audio file:
 
 ```bash
-pip install torch transformers huggingface_hub safetensors omegaconf scipy soundfile pyarrow datasets einops hydra-core
+uv sync
 ```
 
 Run:
 
 ```bash
-python3 infer.py --config-name offline-ita audio=audio/worldcup.mp3
+uv run python infer.py --config-name offline-ita audio=audio/worldcup.mp3
 ```
 
 ## Environment
 
-Use Python 3.10+. Different parts of the pipeline uses different dependencies.
+Use Python 3.10+. Dependencies are managed with `uv` from `pyproject.toml`. The repository pins Python 3.12 in `.python-version` so `uv` will select a compatible interpreter automatically.
+
+Install the default training, encoding, and inference environment:
+
+```bash
+uv sync
+```
+
+Install the transcription environment instead:
+
+```bash
+uv sync --only-group transcribe
+```
+
+The transcription environment is separated into its own dependency group because `qwen-asr[vllm]` currently pins a different `transformers`, `huggingface-hub`, and `torch` stack than the rest of the repo.
+
+The `transcribe` group is currently intended for Linux environments. Upstream `qwen-asr[vllm]` pulls `flashinfer`/CUDA dependencies that do not currently resolve from wheels on macOS or Windows.
+
+The default `main` group installs PyTorch from the official nightly indexes: CUDA 12.6 nightlies on Linux and Windows, and CPU nightlies on macOS. The `transcribe` group follows the stable `qwen-asr[vllm]`-compatible torch line instead. If you need a different PyTorch build, update the `torch` requirement and `[tool.uv.sources]` entry in `pyproject.toml` before syncing.
 
 Authenticate with Hugging Face if you use private repos:
 
@@ -81,8 +99,10 @@ Before running a stage, edit the corresponding yaml.
 Install the transcription dependency first:
 
 ```bash
-pip install -U "qwen-asr[vllm]"
+uv sync --only-group transcribe
 ```
+
+This transcription environment is currently supported on Linux only.
 
 Edit:
 
@@ -110,7 +130,7 @@ output:
 Run:
 
 ```bash
-python3 -m preprocessing.transcribe
+uv run --only-group transcribe -- python -m preprocessing.transcribe
 ```
 
 This step writes transcription shards under:
@@ -125,10 +145,10 @@ If upload is enabled in the config, it also uploads them to the configured HF da
 
 `preprocessing/encode_latents.py` reads the same audio dataset and encodes audio with Mimi.
 
-Install the encoding dependencies:
+Use the base project environment:
 
 ```bash
-pip install torch transformers huggingface_hub safetensors omegaconf scipy soundfile pyarrow datasets einops hydra-core
+uv sync
 ```
 
 Edit:
@@ -154,7 +174,7 @@ output:
 Run:
 
 ```bash
-python3 -m preprocessing.encode_latents --config-path configs/encoding.yaml
+uv run python -m preprocessing.encode_latents --config-path configs/encoding.yaml
 ```
 
 This writes latent parquet shards and local manifests under:
@@ -171,7 +191,7 @@ out/latents/manifests/<country>/<split>.jsonl
 
 
 ```bash
-python3 -m preprocessing.upload_latents_to_hf \
+uv run python -m preprocessing.upload_latents_to_hf \
   --latents-dir out/latents \
   --transcriptions-dir out/transcriptions \
   --output-dir out/paired_latents \
@@ -184,24 +204,24 @@ python3 -m preprocessing.upload_latents_to_hf \
 
 ## 4. Train The Decoder
 
-Training requires PyTorch 2.12+ because the decoder uses:
+Training requires the PyTorch nightly line because the decoder uses:
 
 ```python
 torch.nn.attention.varlen.varlen_attn
 ```
 
-Install training dependencies from the project requirements:
+Install the training environment:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
-The pinned requirements include `torch==2.12.0+cu126`. If you use a different CUDA setup, install a compatible PyTorch 2.12+ build first, then install the remaining packages.
+The default `main` group resolves the PyTorch `2.12.0.dev` nightly line from the official nightly indexes. If you use a different CUDA setup, edit the `torch` requirement and `[tool.uv.sources]` entry in `pyproject.toml` first, then run `uv sync`.
 
 Run:
 
 ```bash
-python3 -m training.train
+uv run python -m training.train
 ```
 
 
@@ -210,7 +230,7 @@ python3 -m training.train
 Upload exported decoder weights:
 
 ```bash
-python3 -m training.utils.push_checkpoint_to_hf \
+uv run python -m training.utils.push_checkpoint_to_hf \
   --output-dir out/training \
   --repo-id your-org/your-decoder-repo \
   --private
@@ -219,7 +239,7 @@ python3 -m training.utils.push_checkpoint_to_hf \
 Upload exported weights plus a full resumable training checkpoint:
 
 ```bash
-python3 -m training.utils.push_checkpoint_to_hf \
+uv run python -m training.utils.push_checkpoint_to_hf \
   --output-dir out/training \
   --repo-id your-org/your-decoder-repo \
   --private \
