@@ -1,0 +1,88 @@
+[project]
+name = "suspiria-asr"
+version = "0.1.0"
+description = "Research training stack for a Mimi-latent ASR decoder."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+shared = [
+    "datasets",
+    "hydra-core==1.3.2",
+    "numpy==2.2.6",
+    "omegaconf==2.3.0",
+    "pyyaml==6.0.3",
+    "tqdm==4.67.3",
+]
+main = [
+    { include-group = "shared" },
+    "einops==0.8.2",
+    "huggingface-hub==1.11.0",
+    "pyarrow==24.0.0",
+    "safetensors==0.7.0",
+    "scipy",
+    "soundfile",
+    "tokenizers==0.22.2",
+    "torch>=2.12.0.dev,<2.13",
+    "torchcodec; sys_platform == 'darwin' or sys_platform == 'linux'",
+    "triton; sys_platform == 'linux'",
+    "transformers==5.5.4",
+    "wandb==0.26.0",
+]
+transcribe = [
+    { include-group = "shared" },
+    "huggingface-hub>=0.34,<1.0; sys_platform == 'linux'",
+    "qwen-asr[vllm]; sys_platform == 'linux'",
+    "torch==2.9.1; sys_platform == 'linux'",
+    "torchcodec>=0.9,<0.10; sys_platform == 'linux'",
+    "triton; sys_platform == 'linux'",
+]
+
+[tool.uv]
+default-groups = ["main"]
+prerelease = "allow"
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'",
+]
+conflicts = [
+    [
+        { group = "main" },
+        { group = "transcribe" },
+    ],
+]
+
+[tool.uv.dependency-groups]
+transcribe = { requires-python = ">=3.10,<3.14" }
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-nightly-cpu", group = "main", marker = "sys_platform == 'darwin'" },
+    { index = "pytorch-nightly-cu126", group = "main", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu126", group = "transcribe", marker = "sys_platform == 'linux'" },
+]
+torchcodec = [
+    { index = "pytorch-nightly-cpu", group = "main", marker = "sys_platform == 'darwin'" },
+    { index = "pytorch-nightly-cpu", group = "main", marker = "sys_platform == 'linux'" },
+]
+triton = [
+    { index = "pytorch-nightly-cu126", group = "main", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cu126", group = "transcribe", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-nightly-cpu"
+url = "https://download.pytorch.org/whl/nightly/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-nightly-cu126"
+url = "https://download.pytorch.org/whl/nightly/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
