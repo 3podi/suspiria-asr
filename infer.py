@@ -197,7 +197,7 @@ def main() -> None:
     if mimi_cfg.get("weights_path") is not None:
         mimi_cfg["weights_path"] = resolve_weight_path(mimi_cfg["weights_path"])
     mimi = load_mimi_encoder(mimi_config=mimi_cfg, device=str(device))
-    mimi.eval().to(device=device, dtype=torch.bfloat16)
+    mimi.eval().to(device=device)
 
     wav, source_rate = read_audio(audio_path)
     wav = convert_audio(
@@ -213,7 +213,7 @@ def main() -> None:
     wav, num_frames = pad_to_frame_multiple(wav, int(mimi.frame_size))
 
     with torch.inference_mode():
-        audio = wav.unsqueeze(0).to(device=device, dtype=torch.bfloat16)
+        audio = wav.unsqueeze(0).to(device=device)
         prequant = mimi.encode_to_latent(audio)
         projected = mimi.quantize(prequant)[0, :, :num_frames].transpose(0, 1).contiguous().cpu()
 
