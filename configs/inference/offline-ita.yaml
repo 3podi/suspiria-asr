@@ -1,0 +1,85 @@
+audio: null
+
+tokenizer:
+  name: "3podi/bpe_ita_Latn_32000_v2"
+  revision: null
+  use_fast: true
+  bos_token: "[BOS]"
+  eos_token: "[EOS]"
+  pad_wait_token: "[P]"
+  word_start_token: "[W]"
+  additional_special_tokens:
+    - "[P]"
+    - "[W]"
+
+decoder:
+  weights_path: "hf://3podi/suspiria-asr-ita/model.safetensors"
+
+model:
+  audio_input_dim: 32
+  hidden_size: 1024
+  num_layers: 12
+  num_heads: 16
+  num_kv_heads: 4
+  ffw_hidden_size: 4096
+  attention_window: 512
+  rope_theta: 1000000.0
+  rms_norm_eps: 1.0e-5
+  max_position_embeddings: 16384
+  time_condition_dim: 32
+  time_embedding_theta: 10000.0
+  tie_word_embeddings: false
+
+loss:
+  eos_factor: 1.0
+  pad_wait_factor: 1.0
+  word_start_factor: 1.0
+
+timeline:
+  step_ms: 80
+  left_pad_steps: 16
+  delay_ms: 2400
+  flush_steps: null
+  extra_flush_steps: 128
+  max_decode_steps: 256
+  max_audio_seconds: 20
+
+runtime:
+  device: null
+
+mimi:
+  weights_path: null
+  sample_rate: 24000
+  channels: 1
+  frame_rate: 12.5
+  repo_id: "3podi/pocket-tts-complete"
+  weights_filename: "tts_b6369a24_complete.safetensors"
+  seanet:
+    dimension: 512
+    channels: 1
+    n_filters: 64
+    n_residual_layers: 1
+    ratios:
+      - 6
+      - 5
+      - 4
+    kernel_size: 7
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  transformer:
+    d_model: 512
+    num_heads: 8
+    num_layers: 2
+    layer_scale: 0.01
+    context: 250
+    dim_feedforward: 2048
+    input_dimension: 512
+    max_period: 10000
+    output_dimensions:
+      - 512
+  quantizer:
+    dimension: 32
+    output_dimension: 512
