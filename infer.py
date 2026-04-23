@@ -169,7 +169,6 @@ def main() -> None:
     audio_path = infer_cfg["audio"]
     tokenizer_path = infer_cfg["tokenizer"]["name"]
     decoder_weights = infer_cfg["decoder"]["weights_path"]
-    mimi_weights = infer_cfg["mimi"]["weights_path"]
     train_cfg = model_builder_cfg(infer_cfg)
 
     runtime_cfg = dict(train_cfg.get("runtime", {}))
@@ -195,7 +194,8 @@ def main() -> None:
     decoder.eval().to(device=device, dtype=torch.bfloat16)
 
     mimi_cfg = dict(infer_cfg["mimi"])
-    mimi_cfg["weights_path"] = resolve_weight_path(mimi_weights)
+    if mimi_cfg.get("weights_path") is not None:
+        mimi_cfg["weights_path"] = resolve_weight_path(mimi_cfg["weights_path"])
     mimi = load_mimi_encoder(mimi_config=mimi_cfg, device=str(device))
     mimi.eval().to(device=device, dtype=torch.bfloat16)
 
