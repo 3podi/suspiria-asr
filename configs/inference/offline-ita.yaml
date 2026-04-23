@@ -41,8 +41,8 @@ timeline:
   delay_ms: 2400
   flush_steps: null
   extra_flush_steps: 128
-  max_decode_steps: 256
-  max_audio_seconds: 20
+  max_decode_steps: 1024
+  max_audio_seconds: 30
 
 runtime:
   device: null
