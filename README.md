@@ -1,5 +1,7 @@
 # Suspiria-ASR
 
+[![Hugging Face Collection](https://img.shields.io/badge/Hugging%20Face-Collection-yellow)](https://huggingface.co/collections/3podi/suspiria-asr)
+
 Suspiria-ASR is a research training stack for an ASR decoder inspired by Delayed Streams Modeling models and Voxtral-Realtime.
 
 The project trains a decoder over precomputed Mimi audio latents. Audio is encoded at 12.5 Hz, so each latent represents 80 ms of audio. The decoder advances at the same rate and predicts exactly one token per latent step. The token stream contains normal text tokens plus `[BOS]`, `[EOS]`, `[P]` for wait/pad, and `[W]` for the start of a text island.
