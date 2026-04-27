@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any
 import wave
 
@@ -220,6 +221,9 @@ def main(cfg: DictConfig) -> None:
         f"[INFER] audio={audio_path} source_sr={source_rate} "
         f"mimi_sr={mimi_cfg['sample_rate']} frames={projected.shape[0]} delay_ms={delay_ms}"
     )
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    generation_start_time = time.perf_counter()
     transcript = generate_batch_greedy(
         decoder,
         [{"key": Path(audio_path).name, "projected": projected}],
@@ -232,6 +236,10 @@ def main(cfg: DictConfig) -> None:
         flush_steps=flush_steps,
         max_decode_steps=max_decode_steps,
     )[0]
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    generation_elapsed_time = time.perf_counter() - generation_start_time
+    print(f"[INFER] generation_time_sec={generation_elapsed_time:.3f}")
     print(transcript)
 
 
