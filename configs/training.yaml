@@ -21,7 +21,7 @@ dataset:
   delay_max_ms: 2400
 
 tokenizer:
-  name: "flexitok/bpe_ita_Latn_32000_v2"
+  name: "3podi/bpe_ita_Latn_32000"
   revision: null
   use_fast: true
   bos_token: "[BOS]"
@@ -65,8 +65,8 @@ optimization:
 
 loss:
   eos_factor: 1.0
-  pad_wait_factor: 0.25
-  word_start_factor: 2.0
+  pad_wait_factor: 0.50
+  word_start_factor: 1.0
 
 scaling:
   enabled: false
@@ -87,8 +87,8 @@ evaluation:
 
 wer:
   enabled: false
-  batch_size: 4
-  max_batches: 4
+  batch_size: 32
+  max_batches: 16
   # Can be a single value, e.g. 2400, or a list, e.g. [80, 800, 2400].
   delay_ms: 2400
   # If flush_steps is null, WER generation uses delay_steps + extra_flush_steps.
