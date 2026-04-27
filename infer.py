@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import resource
+import sys
 import time
 from typing import Any
 import wave
@@ -25,6 +27,17 @@ from training.utils.wer import generate_batch_greedy
 
 
 silence_external_info_logs()
+
+
+def _format_mib(num_bytes: int) -> str:
+    return f"{num_bytes / (1024 ** 2):.1f} MiB"
+
+
+def _cpu_peak_rss_bytes() -> int:
+    peak_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return int(peak_rss)
+    return int(peak_rss) * 1024
 
 
 def resolve_weight_path(path_or_hf: str | Path) -> str:
@@ -163,6 +176,8 @@ def main(cfg: DictConfig) -> None:
     if device_value is not None:
         runtime_cfg["device"] = device_value
     device = resolve_device(runtime_cfg)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
 
     tokenizer_cfg = dict(infer_cfg["tokenizer"])
     tokenizer_cfg["name"] = tokenizer_path
@@ -223,6 +238,9 @@ def main(cfg: DictConfig) -> None:
     )
     if device.type == "cuda":
         torch.cuda.synchronize(device)
+        torch.cuda.reset_peak_memory_stats(device)
+        generation_start_allocated = torch.cuda.memory_allocated(device)
+        generation_start_reserved = torch.cuda.memory_reserved(device)
     generation_start_time = time.perf_counter()
     transcript = generate_batch_greedy(
         decoder,
@@ -239,7 +257,19 @@ def main(cfg: DictConfig) -> None:
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     generation_elapsed_time = time.perf_counter() - generation_start_time
+    audio_duration_sec = projected.shape[0] * (step_ms / 1000.0)
+    realtime_factor = generation_elapsed_time / audio_duration_sec if audio_duration_sec > 0 else float("inf")
     print(f"[INFER] generation_time_sec={generation_elapsed_time:.3f}")
+    print(f"[INFER] audio_duration_sec={audio_duration_sec:.3f} rtf={realtime_factor:.3f}")
+    print(f"[INFER] cpu_peak_rss={_format_mib(_cpu_peak_rss_bytes())}")
+    if device.type == "cuda":
+        print(
+            "[INFER] "
+            f"gpu_generation_start_allocated={_format_mib(generation_start_allocated)} "
+            f"gpu_generation_start_reserved={_format_mib(generation_start_reserved)} "
+            f"gpu_generation_peak_allocated={_format_mib(torch.cuda.max_memory_allocated(device))} "
+            f"gpu_generation_peak_reserved={_format_mib(torch.cuda.max_memory_reserved(device))}"
+        )
     print(transcript)
 
 
