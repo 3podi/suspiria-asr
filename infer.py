@@ -176,6 +176,7 @@ def main(cfg: DictConfig) -> None:
     if device_value is not None:
         runtime_cfg["device"] = device_value
     device = resolve_device(runtime_cfg)
+    print(f"[INFER] device={device}")
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
