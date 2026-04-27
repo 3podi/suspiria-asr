@@ -33,7 +33,7 @@ from training.utils.metrics import (
 from training.utils.model_builder import build_model, load_pretrained_model_weights
 from training.utils.optimization import build_optimizer_and_scheduler
 from training.utils.scaling import build_scaling_payload, save_scaling_output
-from training.utils.logging import print_model_parameter_summary, silence_external_info_logs
+from training.utils.logging import print_model_parameter_summary
 
 try:
     import wandb
@@ -46,8 +46,6 @@ OmegaConf.register_new_resolver(
     lambda value: str(value).replace(".", "p").replace("-", "m"),
     replace=True,
 )
-
-silence_external_info_logs()
 
 
 def _prefix_metrics(prefix: str, metrics: dict[str, float]) -> dict[str, float]:

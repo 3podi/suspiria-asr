@@ -25,9 +25,6 @@ from training.data.types import PairedManifestRow
 from training.tokenizer import load_tokenizer
 from training.utils.config import resolve_torch_dtype
 from training.utils.data import ensure_materialized_dataset
-from training.utils.logging import silence_external_info_logs
-
-silence_external_info_logs()
 
 
 class InspectLatentDataset:
